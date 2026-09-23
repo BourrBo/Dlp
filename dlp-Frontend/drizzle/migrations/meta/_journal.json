@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790081003068,
+      "tag": "0000_create_dlp_schema",
+      "breakpoints": true
+    }
+  ]
+}
