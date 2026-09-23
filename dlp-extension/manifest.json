@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "DLP Guard",
+  "version": "0.1.0",
+  "description": "Scans pastes and file uploads for sensitive data before they leave the page, using your DLP backend's policy decisions.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "DLP Guard"
+  },
+  "options_page": "options.html"
+}

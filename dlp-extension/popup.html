@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>DLP Guard</title>
+  <style>
+    body { font-family: system-ui, sans-serif; width: 300px; padding: 14px; color: #1a1a1a; }
+    h1 { font-size: 14px; margin: 0 0 10px; display: flex; align-items: center; justify-content: space-between; }
+    .toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    ul { list-style: none; padding: 0; margin: 12px 0 0; max-height: 220px; overflow-y: auto; }
+    li { padding: 6px 0; border-bottom: 1px solid #eee; font-size: 11px; }
+    .decision { font-weight: 600; text-transform: uppercase; margin-right: 6px; }
+    .block { color: #e0413a; }
+    .warn { color: #d99a1f; }
+    .allow, .log { color: #2f9e6d; }
+    .empty { color: #888; font-size: 12px; padding: 10px 0; }
+    a { font-size: 11px; color: #2563eb; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1>
+    DLP Guard
+    <label class="toggle">
+      <input type="checkbox" id="enabled" />
+      Protection on
+    </label>
+  </h1>
+  <a href="#" id="openOptions">Configure backend & org →</a>
+  <ul id="events"></ul>
+  <script src="popup.js"></script>
+</body>
+</html>

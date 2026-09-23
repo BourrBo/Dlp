@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>DLP Guard — Settings</title>
+  <style>
+    body { font-family: system-ui, sans-serif; width: 360px; padding: 16px; color: #1a1a1a; }
+    h1 { font-size: 15px; margin: 0 0 12px; }
+    label { display: block; font-size: 12px; color: #555; margin: 12px 0 4px; }
+    input[type="text"] { width: 100%; padding: 6px 8px; font-size: 13px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    .row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+    button { padding: 6px 14px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; }
+    #save { background: #2563eb; color: #fff; }
+    #test { background: #eee; }
+    #status { font-size: 12px; margin-top: 10px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <h1>DLP Guard — Settings</h1>
+
+  <label for="backendUrl">Backend URL</label>
+  <input type="text" id="backendUrl" placeholder="http://localhost:8000" />
+
+  <label for="orgId">Organization ID</label>
+  <input type="text" id="orgId" placeholder="UUID from your dlp_organizations row" />
+
+  <label for="userId">User ID</label>
+  <input type="text" id="userId" placeholder="Your Supabase auth user id" />
+
+  <div class="row">
+    <button id="save">Save</button>
+    <button id="test">Test connection</button>
+  </div>
+  <div id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
