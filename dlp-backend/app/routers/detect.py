@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.database import get_supabase
+from app import database
 from app.models.finding import DlpEvent, ScanRequest, ScanResult
 from app.services import detection_service, policy_engine
 
@@ -34,6 +34,16 @@ def scan(request: ScanRequest) -> ScanResult:
 
 
 def _persist_event(event: DlpEvent) -> None:
-    supabase = get_supabase()
-    payload = event.model_dump(mode="json")
-    supabase.table("dlp_events").insert(payload).execute()
+    # Only send the fields the console's dlp-scan-event route accepts —
+    # it generates its own id/created_at on insert.
+    payload = {
+        "org_id": str(event.org_id),
+        "user_id": str(event.user_id),
+        "channel": event.channel.value,
+        "data_type": event.data_type.value,
+        "confidence": event.confidence,
+        "destination": event.destination,
+        "decision": event.decision.value,
+        "snippet": event.snippet,
+    }
+    database.post_scan_event(payload)

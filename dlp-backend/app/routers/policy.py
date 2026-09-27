@@ -1,22 +1,13 @@
-from uuid import UUID
+"""
+Deprecated: policy CRUD is handled by the Lovable dashboard's Policies page,
+which reads/writes dlp_policies directly against Supabase under RLS. The
+backend still reads policies for /api/scan's decisions (see
+app/services/policy_engine.py), via the console's dlp-get-policy route —
+it just doesn't need its own CRUD surface for the dashboard to use.
+Kept as a stub so the import doesn't break anything that still references
+this module.
+"""
 
 from fastapi import APIRouter
 
-from app.database import get_supabase
-from app.models.policy import Policy
-
 router = APIRouter(prefix="/api/policies", tags=["policies"])
-
-
-@router.get("")
-def list_policies(org_id: UUID):
-    supabase = get_supabase()
-    result = supabase.table("dlp_policies").select("*").eq("org_id", str(org_id)).execute()
-    return result.data
-
-
-@router.post("")
-def create_policy(policy: Policy):
-    supabase = get_supabase()
-    supabase.table("dlp_policies").insert(policy.model_dump(mode="json")).execute()
-    return policy

@@ -5,8 +5,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # Lovable-hosted console's secured API routes (see app/database.py) —
+    # replaces direct Supabase service-role access, which Lovable Cloud
+    # projects don't expose externally.
+    dlp_console_base_url: str = ""
+    dlp_backend_secret: str = ""
+
     supabase_url: str = ""
-    supabase_service_role_key: str = ""
     supabase_anon_key: str = ""
 
     app_env: str = "development"

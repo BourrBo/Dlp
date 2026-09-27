@@ -10,7 +10,7 @@ this is the single place enforcement decisions get made.
 
 from uuid import UUID
 
-from app.database import get_supabase
+from app import database
 from app.models.finding import Decision, Finding, ScanRequest
 from app.models.policy import Policy
 
@@ -37,16 +37,7 @@ def evaluate(request: ScanRequest, findings: list[Finding]) -> tuple[Decision, U
 
 
 def _find_matching_policy(org_id: UUID, data_type, channel) -> Policy | None:
-    supabase = get_supabase()
-    result = (
-        supabase.table("dlp_policies")
-        .select("*")
-        .eq("org_id", str(org_id))
-        .eq("data_type", data_type.value)
-        .eq("channel", channel.value)
-        .limit(1)
-        .execute()
-    )
-    if not result.data:
+    row = database.get_policy(org_id=str(org_id), data_type=data_type.value, channel=channel.value)
+    if not row:
         return None
-    return Policy(**result.data[0])
+    return Policy(**row)
