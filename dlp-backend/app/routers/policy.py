@@ -1,5 +1,5 @@
 """
-Deprecated: policy CRUD is handled by the Lovable dashboard's Policies page,
+Deprecated: policy CRUD is handled by the dashboard's Policies page,
 which reads/writes dlp_policies directly against Supabase under RLS. The
 backend still reads policies for /api/scan's decisions (see
 app/services/policy_engine.py), via the console's dlp-get-policy route —

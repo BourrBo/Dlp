@@ -54,7 +54,7 @@ export type Database = {
           org_id: string
           pattern_type: string
           pattern_value: string
-          sensitivity_level: number
+          sensitivity_level: string
         }
         Insert: {
           created_at?: string
@@ -63,7 +63,7 @@ export type Database = {
           org_id: string
           pattern_type: string
           pattern_value: string
-          sensitivity_level?: number
+          sensitivity_level?: string
         }
         Update: {
           created_at?: string
@@ -72,7 +72,7 @@ export type Database = {
           org_id?: string
           pattern_type?: string
           pattern_value?: string
-          sensitivity_level?: number
+          sensitivity_level?: string
         }
         Relationships: [
           {

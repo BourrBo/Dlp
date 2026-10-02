@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import channels, detect, events, policy
+from app.routers import channels, classifications, detect, events, policy
 
 settings = get_settings()
 
@@ -20,6 +20,7 @@ app.include_router(detect.router)
 app.include_router(events.router)
 app.include_router(policy.router)
 app.include_router(channels.router)
+app.include_router(classifications.router)
 
 
 @app.get("/health")

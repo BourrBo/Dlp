@@ -1,5 +1,5 @@
 """
-Deprecated: event listing is handled by the Lovable dashboard, which reads
+Deprecated: event listing is handled by the dashboard, which reads
 dlp_events directly from Supabase under the signed-in user's own RLS policy.
 This backend has no service-role access to Supabase (see app/database.py),
 so it has no privileged read path to duplicate that here. Kept as a stub

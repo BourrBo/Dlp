@@ -1,10 +1,14 @@
 from fastapi import APIRouter
+import logging
 
 from app import database
 from app.models.finding import DlpEvent, ScanRequest, ScanResult
-from app.services import detection_service, policy_engine
+from app.services import policy_engine
+from app.services.person_b import detection_service
+from app.services.alert_service import send_alert
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=ScanResult)
@@ -14,7 +18,9 @@ def scan(request: ScanRequest) -> ScanResult:
     webhook) calls. This is the Phase-1 wire-up: detection -> policy ->
     persisted event. Channels only need to build a ScanRequest and POST here.
     """
-    findings = detection_service.detect(request.content)
+    findings = detection_service.detect(
+        request.content, org_id=request.org_id, filename=request.filename
+    )
     decision, policy_id, reason = policy_engine.evaluate(request, findings)
 
     top_finding = findings[0] if findings else None
@@ -30,12 +36,22 @@ def scan(request: ScanRequest) -> ScanResult:
     )
     _persist_event(event)
 
+    if top_finding and decision.value in {"block", "warn"}:
+        alert = send_alert(
+            decision=decision.value,
+            data_type=top_finding.data_type.value,
+            filename=request.filename,
+            destination=request.destination,
+            reason=reason,
+        )
+        if not alert["sent"] and alert["reason"] != "No alert required":
+            logger.warning("DLP alert was not sent: %s", alert["reason"])
+
     return ScanResult(findings=findings, decision=decision, matched_policy_id=policy_id, reason=reason)
 
 
 def _persist_event(event: DlpEvent) -> None:
-    # Only send the fields the console's dlp-scan-event route accepts —
-    # it generates its own id/created_at on insert.
+    # The database generates id and created_at on insert.
     payload = {
         "org_id": str(event.org_id),
         "user_id": str(event.user_id),

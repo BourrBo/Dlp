@@ -1,0 +1,2 @@
+# Install only after the operating system's native libfuzzy dependency is set up.
+ssdeep>=3.4

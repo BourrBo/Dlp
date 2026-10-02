@@ -27,6 +27,16 @@
   <label for="userId">User ID</label>
   <input type="text" id="userId" placeholder="Your Supabase auth user id" />
 
+  <div class="row" style="margin-top: 16px;">
+    <input type="checkbox" id="failClosed" style="width: auto;" />
+    <label for="failClosed" style="margin: 0; font-size: 12px; color: #1a1a1a;">
+      Block pastes/uploads when the backend is unavailable
+    </label>
+  </div>
+  <div style="font-size: 11px; color: #888; margin-top: 4px;">
+    Off by default (fail open). Enable this for stricter enforcement requirements.
+  </div>
+
   <div class="row">
     <button id="save">Save</button>
     <button id="test">Test connection</button>

@@ -15,6 +15,7 @@ per its decision.
    - Organization ID (the `org_id` from your Supabase `organizations` table — sign into the dashboard once and copy it from `org_members`)
    - User ID (your Supabase auth user id)
 5. **Test connection** in the options page should return `{"status": "ok"}`.
+6. Optionally enable **Block when backend is unavailable** for a fail-closed posture. It is off by default.
 
 ## Try it
 
@@ -31,9 +32,10 @@ running log of recent decisions.
 
 ## Scope limits (matches architecture doc §8)
 
-- Only text-like file uploads (`.txt .csv .json .md .log`) are content-scanned. Binary files (images, PDFs, zips) pass through unscanned in v1.
-- No enforcement on drag-and-drop file uploads yet — only the native file input's `change` event and clipboard paste are covered.
-- Backend-unreachable failures **fail open** (allow) rather than blocking every page — a DLP extension that breaks the internet when the backend is down is worse than one with gaps. This is visible in the popup's activity log as `allow` with an "unreachable" reason.
+- Clipboard paste, native file selection, and file drag-and-drop are intercepted. For allowed file selections, the extension dispatches a new `change` event after scanning so page upload handlers run only after the decision.
+- `.txt`, `.csv`, `.json`, `.md`, and `.log` files are scanned up to 5 MB each. Unsupported binary formats are reported as not scanned and pass through; PDF/DOCX support depends on a future backend extraction endpoint.
+- If the extension is reloaded while a page remains open, that stale page context cannot scan. It shows a banner asking the user to refresh.
+- Backend-unavailable behavior is configurable: fail open by default, or block when enabled in Settings. The popup activity log records the decision.
 
 ## Files
 
