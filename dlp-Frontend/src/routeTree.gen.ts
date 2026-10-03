@@ -12,12 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
 import { Route as AuthenticatedExceptionsRouteImport } from './routes/_authenticated/exceptions'
 import { Route as AuthenticatedPoliciesRouteImport } from './routes/_authenticated/policies'
-import { Route as ApiPublicDlpGetPolicyRouteImport } from './routes/api/public/dlp-get-policy'
-import { Route as ApiPublicDlpScanEventRouteImport } from './routes/api/public/dlp-scan-event'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,6 +30,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComponentsRoute = ComponentsRouteImport.update({
+  id: '/components',
+  path: '/components',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -53,89 +57,72 @@ const AuthenticatedPoliciesRoute = AuthenticatedPoliciesRouteImport.update({
   path: '/policies',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const ApiPublicDlpGetPolicyRoute = ApiPublicDlpGetPolicyRouteImport.update({
-  id: '/api/public/dlp-get-policy',
-  path: '/api/public/dlp-get-policy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublicDlpScanEventRoute = ApiPublicDlpScanEventRouteImport.update({
-  id: '/api/public/dlp-scan-event',
-  path: '/api/public/dlp-scan-event',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/components': typeof ComponentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/events': typeof AuthenticatedEventsRoute
   '/exceptions': typeof AuthenticatedExceptionsRoute
   '/policies': typeof AuthenticatedPoliciesRoute
-  '/api/public/dlp-get-policy': typeof ApiPublicDlpGetPolicyRoute
-  '/api/public/dlp-scan-event': typeof ApiPublicDlpScanEventRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/components': typeof ComponentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/events': typeof AuthenticatedEventsRoute
   '/exceptions': typeof AuthenticatedExceptionsRoute
   '/policies': typeof AuthenticatedPoliciesRoute
-  '/api/public/dlp-get-policy': typeof ApiPublicDlpGetPolicyRoute
-  '/api/public/dlp-scan-event': typeof ApiPublicDlpScanEventRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/components': typeof ComponentsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/exceptions': typeof AuthenticatedExceptionsRoute
   '/_authenticated/policies': typeof AuthenticatedPoliciesRoute
-  '/api/public/dlp-get-policy': typeof ApiPublicDlpGetPolicyRoute
-  '/api/public/dlp-scan-event': typeof ApiPublicDlpScanEventRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
+    | '/components'
     | '/dashboard'
     | '/events'
     | '/exceptions'
     | '/policies'
-    | '/api/public/dlp-get-policy'
-    | '/api/public/dlp-scan-event'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
+    | '/components'
     | '/dashboard'
     | '/events'
     | '/exceptions'
     | '/policies'
-    | '/api/public/dlp-get-policy'
-    | '/api/public/dlp-scan-event'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/components'
     | '/_authenticated/dashboard'
     | '/_authenticated/events'
     | '/_authenticated/exceptions'
     | '/_authenticated/policies'
-    | '/api/public/dlp-get-policy'
-    | '/api/public/dlp-scan-event'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
-  ApiPublicDlpGetPolicyRoute: typeof ApiPublicDlpGetPolicyRoute
-  ApiPublicDlpScanEventRoute: typeof ApiPublicDlpScanEventRoute
+  ComponentsRoute: typeof ComponentsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -159,6 +146,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/components': {
+      id: '/components'
+      path: '/components'
+      fullPath: '/components'
+      preLoaderRoute: typeof ComponentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard': {
@@ -189,20 +183,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPoliciesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/dlp-get-policy': {
-      id: '/api/public/dlp-get-policy'
-      path: '/api/public/dlp-get-policy'
-      fullPath: '/api/public/dlp-get-policy'
-      preLoaderRoute: typeof ApiPublicDlpGetPolicyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/dlp-scan-event': {
-      id: '/api/public/dlp-scan-event'
-      path: '/api/public/dlp-scan-event'
-      fullPath: '/api/public/dlp-scan-event'
-      preLoaderRoute: typeof ApiPublicDlpScanEventRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -227,8 +207,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
-  ApiPublicDlpGetPolicyRoute: ApiPublicDlpGetPolicyRoute,
-  ApiPublicDlpScanEventRoute: ApiPublicDlpScanEventRoute,
+  ComponentsRoute: ComponentsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

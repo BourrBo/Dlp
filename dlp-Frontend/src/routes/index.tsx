@@ -1,4 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { FIXTURE_MODE } from "@/lib/env";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/")({
     ],
   }),
   beforeLoad: async () => {
+    if (FIXTURE_MODE) throw redirect({ to: "/dashboard" });
     const { data } = await supabase.auth.getSession();
     throw redirect({ to: data.session ? "/dashboard" : "/auth" });
   },
