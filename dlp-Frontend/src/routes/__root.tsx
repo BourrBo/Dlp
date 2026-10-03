@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
@@ -10,7 +10,6 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
 import { FIXTURE_MODE } from "@/lib/env";
 import { supabase } from "@/integrations/supabase/client";
 import { Toaster } from "@/components/ui/sonner";
@@ -41,7 +40,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    console.error(error);
   }, [error]);
 
   return (
@@ -80,12 +79,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "DLP — Data Loss Prevention Console" },
+      { title: "DLP â€” Data Loss Prevention Console" },
       {
         name: "description",
         content: "Monitor, classify and control sensitive data leaving your organization.",
       },
-      { property: "og:title", content: "DLP — Data Loss Prevention Console" },
+      { property: "og:title", content: "DLP â€” Data Loss Prevention Console" },
       {
         property: "og:description",
         content: "Monitor, classify and control sensitive data leaving your organization.",
@@ -150,3 +149,4 @@ function RootComponent() {
     </QueryClientProvider>
   );
 }
+

@@ -1,85 +1,64 @@
-# DLP Backend
+# DLP backend
 
-FastAPI backend for the DLP project. Companion to `DLP_Technical_Architecture.docx`.
+FastAPI service for text scanning, policy evaluation, event logging, and the
+standalone ingestion extractors. The backend connects directly to the
+configured Supabase project's Data API; it does not call Lovable-hosted routes.
 
-## Architecture note (updated)
+## Local setup
 
-This backend does **not** connect to Supabase directly. Lovable Cloud
-projects don't expose their service-role key outside Lovable's own UI, so
-instead this service calls two secured routes built into the Lovable
-dashboard app itself:
-
-- `POST /api/public/dlp-scan-event` — writes a row to `dlp_events`
-- `GET /api/public/dlp-get-policy` — reads the matching `dlp_policies` row
-
-Both are gated by a shared secret (`DLP_BACKEND_SECRET`) sent as the
-`x-dlp-secret` header. See `app/database.py`.
-
-The dashboard's own pages (event feed, policy editor, exceptions) still
-read/write Supabase directly under the signed-in user's own RLS — that
-path is unrelated to this backend and is the more correct pattern for a
-UI anyway. `app/routers/events.py` and `app/routers/policy.py` are kept
-as empty stubs for that reason; don't build new dashboard-facing CRUD
-into this service.
-
-## Setup (local, no Docker)
-
-```
-python -m venv venv
-.\venv\Scripts\Activate.ps1      # Windows
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env
+Copy-Item .env.example .env
 ```
 
-Fill in `.env`:
-- `DLP_CONSOLE_BASE_URL` — the Lovable app's URL (preview or published)
-- `DLP_BACKEND_SECRET` — a value you generate yourself (e.g. `openssl rand -hex 32`), saved in the Lovable project's **Project Settings → Secrets** under the same name
+Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`. The key is
+server-only, must not be committed, and must never be passed to the dashboard
+build. For the dashboard, configure only the Supabase publishable key. See the
+repository root README for the supported Docker Compose setup.
 
-```
-uvicorn main:app --reload
-```
+## Scan API
 
-## Setup (Docker)
+- `GET /health` returns service status.
+- `POST /api/scan` runs detection, policy evaluation, and event persistence.
 
-```
-docker compose up --build
-```
+The current synchronous endpoint accepts text. File and archive scanning APIs
+are not wired yet.
 
-This sidesteps the Python-3.14/Rust-compile issue some dependencies hit
-on Windows — the image builds on Linux where prebuilt wheels exist.
+## P3 ingestion work
 
-Either way, `GET /health` should return `{"status": "ok"}`.
+The isolated `app/extractors/` module currently supports text/source files,
+CSV, JSON, and XML. It yields bounded overlapping text chunks with file and
+format-specific locations. It enforces the 25 MiB input limit and returns
+explicit skip reasons for unsupported or malformed files. PDF/Office, ZIP,
+async jobs, GitHub scanning, and the CLI package remain follow-up milestones.
 
-## Test the full pipeline
+Inspect sample files locally:
 
-```
-curl -X POST http://localhost:8000/api/scan \
-  -H "Content-Type: application/json" \
-  -d '{
-    "org_id": "00000000-0000-0000-0000-000000000000",
-    "user_id": "00000000-0000-0000-0000-000000000000",
-    "channel": "browser",
-    "destination": "personalmail@gmail.com",
-    "content": "here is my card 4111 1111 1111 1111"
-  }'
+```powershell
+python scripts/inspect_extractors.py path\to\sample.txt path\to\samples\
 ```
 
-Check the Lovable dashboard's Event feed — the resulting row should show
-up there, since both this backend and the dashboard read/write the same
-Supabase project (the Lovable-managed one), just through different paths.
+See [`docs/ingestion.md`](docs/ingestion.md) for supported formats, limits,
+locations, and current exclusions.
 
-## Module ownership (matches the team plan in the architecture doc)
+## Optional teammate integrations
 
-| Path | Owner | Status |
-|---|---|---|
-| `app/services/policy_engine.py`, `app/database.py`, deployment | You (lead) | Working v1 |
-| `app/services/detection_service.py` | Person B | Working regex baseline — extend with Presidio/EDM/fingerprinting |
-| `app/routers/channels.py` | Person C | Stubs only — Gmail/Drive OAuth + webhooks |
-| Chrome extension | Person B | Built — see `dlp-extension/` |
-| Dashboard | You + whoever's free | Built on Lovable — reads/writes Supabase directly under RLS |
+- `pip install -r requirements-person-b.txt` and
+  `python -m spacy download en_core_web_sm` enables Presidio NER.
+- `pip install -r requirements-ssdeep.txt` enables fuzzy document matching
+  when the operating system also has its native `libfuzzy` dependency.
+- `pip install -r requirements-integrations.txt` installs the Gmail/Drive
+  service helper libraries. The ZIP's OAuth routes are intentionally not
+  enabled until user authentication and encrypted token storage are added.
+- Set `SLACK_WEBHOOK_URL` to send alerts for WARN/BLOCK scan decisions.
+- `/api/classifications` rule-registration endpoints require a separate
+  `DLP_ADMIN_API_KEY` sent as `X-DLP-Admin-Key`. They return 503 when unset.
 
-## Notes
+## Security boundary
 
-- `Finding.matched_snippet` is redacted before it's ever returned or persisted — don't remove `_redact()`.
-- `/api/scan` is the only endpoint channels should call; don't duplicate detection/policy logic inside `channels.py` handlers.
-- If `DLP_CONSOLE_BASE_URL` or `DLP_BACKEND_SECRET` are unset, `/api/scan` will raise a clear `RuntimeError` rather than failing silently.
+The extension currently supplies `org_id` and `user_id` in scan requests. The
+backend's service key bypasses RLS, so this prototype is not ready for an
+internet-facing multi-tenant deployment until P2's authenticated principal and
+tenant authorization work replaces client-supplied identity.

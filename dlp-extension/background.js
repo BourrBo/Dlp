@@ -10,6 +10,9 @@ const DEFAULT_CONFIG = {
   orgId: "",
   userId: "",
   enabled: true,
+  // Decide how to behave if the API cannot be reached. Keep fail-open as
+  // the default; deployments with a strict enforcement requirement can opt in.
+  failClosed: false,
 };
 
 async function getConfig() {
@@ -24,7 +27,8 @@ async function scan({ content, channel, destination, filename }) {
     return { decision: "allow", findings: [], reason: "Protection disabled" };
   }
   if (!config.orgId || !config.userId) {
-    return { decision: "allow", findings: [], reason: "Extension not configured — set org/user ID in options" };
+    const decision = config.failClosed ? "block" : "allow";
+    return { decision, findings: [], reason: "Extension not configured — set org/user ID in options" };
   }
 
   try {
@@ -45,10 +49,10 @@ async function scan({ content, channel, destination, filename }) {
     }
     return await res.json();
   } catch (err) {
-    // Backend unreachable: fail open (allow) rather than breaking every page.
-    // Logged locally so it's visible in the popup's recent-activity list.
-    await logLocalEvent({ decision: "allow", reason: `Backend unreachable: ${err.message}`, destination, channel });
-    return { decision: "allow", findings: [], reason: `Backend unreachable: ${err.message}` };
+    const decision = config.failClosed ? "block" : "allow";
+    const reason = `Backend unavailable: ${err.message}`;
+    await logLocalEvent({ decision, reason, destination, channel });
+    return { decision, findings: [], reason };
   }
 }
 

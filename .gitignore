@@ -20,3 +20,11 @@ dist-ssr/
 .idea/
 .vscode/
 *.log
+
+# Provider credentials and private key material
+secureflow-*.json
+service-account*.json
+*credentials*.json
+*.pem
+*.p12
+*.key

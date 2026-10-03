@@ -1,15 +1,17 @@
 const fields = ["backendUrl", "orgId", "userId"];
 
 async function load() {
-  const stored = await chrome.storage.sync.get(fields);
+  const stored = await chrome.storage.sync.get([...fields, "failClosed"]);
   for (const f of fields) {
     if (stored[f]) document.getElementById(f).value = stored[f];
   }
+  document.getElementById("failClosed").checked = !!stored.failClosed;
 }
 
 document.getElementById("save").addEventListener("click", async () => {
   const values = {};
   for (const f of fields) values[f] = document.getElementById(f).value.trim();
+  values.failClosed = document.getElementById("failClosed").checked;
   await chrome.storage.sync.set(values);
   setStatus("Saved.", "#2f9e6d");
 });

@@ -12,6 +12,8 @@ class DataType(str, Enum):
     EMAIL_PII = "email_pii"
     NATIONAL_ID = "national_id"
     PERSON_NAME = "person_name"
+    ADDRESS = "address"
+    PHONE_NUMBER = "phone_number"
     DOCUMENT_MATCH = "document_match"
     CUSTOM = "custom"
 
@@ -42,6 +44,8 @@ class Finding(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     matched_snippet: str
     sensitivity_level: str = "internal"  # public | internal | confidential | restricted
+    matched_rule_id: Optional[UUID] = None
+    label: Optional[str] = None
 
 
 class ScanRequest(BaseModel):

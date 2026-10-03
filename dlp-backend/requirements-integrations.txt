@@ -1,0 +1,7 @@
+# Optional Gmail/Drive helper libraries. OAuth routes remain disabled until
+# user authentication and encrypted token storage are implemented.
+google-api-python-client>=2.0
+google-auth-oauthlib>=1.0
+google-auth-httplib2>=0.2
+google-cloud-pubsub>=2.0
+pypdf>=5.0,<7.0
