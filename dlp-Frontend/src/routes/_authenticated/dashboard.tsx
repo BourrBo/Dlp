@@ -380,8 +380,11 @@ function DashboardPage() {
                 <div
                   className="flex items-center gap-2 rounded-xl border px-3 py-2"
                   style={{
-                    background: "oklch(1 0 0 / 0.10)",
-                    borderColor: "oklch(1 0 0 / 0.15)",
+                    background: "rgba(223, 235, 255, 0.14)",
+                    borderColor: "rgba(255, 255, 255, 0.24)",
+                    backdropFilter: "blur(14px)",
+                    boxShadow:
+                      "0 8px 24px rgba(7, 16, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22)",
                   }}
                 >
                   <Shield className="size-5" style={{ color: "oklch(0.80 0.10 155)" }} />
@@ -393,8 +396,11 @@ function DashboardPage() {
                 <div
                   className="flex items-center gap-2 rounded-xl border px-3 py-2"
                   style={{
-                    background: "oklch(1 0 0 / 0.10)",
-                    borderColor: "oklch(1 0 0 / 0.15)",
+                    background: "rgba(223, 235, 255, 0.14)",
+                    borderColor: "rgba(255, 255, 255, 0.24)",
+                    backdropFilter: "blur(14px)",
+                    boxShadow:
+                      "0 8px 24px rgba(7, 16, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22)",
                   }}
                 >
                   <ShieldAlert className="size-5" style={{ color: "oklch(0.75 0.18 45)" }} />
