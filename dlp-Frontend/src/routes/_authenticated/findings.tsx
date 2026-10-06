@@ -5,10 +5,10 @@ import { Search, SlidersHorizontal } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ClassificationChip } from "@/components/classification-chip";
 import { ConfidenceBar } from "@/components/confidence-bar";
-import { CopyButton } from "@/components/copy-button";
 import { MaskedValue } from "@/components/masked-value";
 import { SeverityBadge } from "@/components/severity-badge";
 import { Input } from "@/components/ui/input";
+import { FINDING_FIXTURES } from "@/lib/fixtures/findings";
 
 export const Route = createFileRoute("/_authenticated/findings")({
   head: () => ({
@@ -24,71 +24,7 @@ export const Route = createFileRoute("/_authenticated/findings")({
   component: FindingsPage,
 });
 
-type FindingStatus = "open" | "triaged" | "fixed" | "accepted" | "false_positive";
-
-type Finding = {
-  id: string;
-  severity: "low" | "medium" | "high" | "critical";
-  classification: string;
-  data_type: string;
-  status: FindingStatus;
-  source: string;
-  detector: string;
-  confidence: number;
-  created_at: string;
-  masked_evidence: string;
-};
-
-const FIXTURE_FINDINGS: Finding[] = [
-  {
-    id: "finding-01",
-    severity: "critical",
-    classification: "credentials",
-    data_type: "api_key",
-    status: "open",
-    source: "Browser",
-    detector: "Secret scanner",
-    confidence: 0.98,
-    created_at: "2026-10-06T09:42:00.000Z",
-    masked_evidence: "sk_live_••••••••••••4K9Q",
-  },
-  {
-    id: "finding-02",
-    severity: "high",
-    classification: "personal information",
-    data_type: "national_id",
-    status: "triaged",
-    source: "Google Drive",
-    detector: "Pattern detector",
-    confidence: 0.91,
-    created_at: "2026-10-06T08:26:00.000Z",
-    masked_evidence: "•••-••-6789",
-  },
-  {
-    id: "finding-03",
-    severity: "medium",
-    classification: "financial data",
-    data_type: "credit_card",
-    status: "open",
-    source: "Email",
-    detector: "Payment card detector",
-    confidence: 0.78,
-    created_at: "2026-10-05T16:14:00.000Z",
-    masked_evidence: "•••• •••• •••• 4242",
-  },
-  {
-    id: "finding-04",
-    severity: "low",
-    classification: "personal information",
-    data_type: "email_pii",
-    status: "accepted",
-    source: "API",
-    detector: "PII detector",
-    confidence: 0.63,
-    created_at: "2026-10-04T12:03:00.000Z",
-    masked_evidence: "a•••••@example.com",
-  },
-];
+type FindingStatus = (typeof FINDING_FIXTURES)[number]["status"];
 
 const STATUS_STYLES: Record<FindingStatus, string> = {
   open: "border-sky-500/30 bg-sky-500/10 text-sky-700",
@@ -102,8 +38,8 @@ function FindingsPage() {
   const [search, setSearch] = useState("");
   const findings = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return FIXTURE_FINDINGS;
-    return FIXTURE_FINDINGS.filter((finding) =>
+    if (!query) return FINDING_FIXTURES;
+    return FINDING_FIXTURES.filter((finding) =>
       [
         finding.id,
         finding.classification,
@@ -203,7 +139,7 @@ function FindingsPage() {
                       {heading}
                     </th>
                   ))}
-                  <th className="px-4 py-3 pr-5"><span className="sr-only">Copy masked evidence</span></th>
+                  <th className="px-4 py-3 pr-5" />
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: "oklch(0.92 0.005 250)" }}>
@@ -215,7 +151,7 @@ function FindingsPage() {
                     <td className="px-4 py-4"><ClassificationChip classification={finding.classification} /></td>
                     <td className="max-w-[260px] px-4 py-4">
                       <p className="font-medium text-foreground">{finding.data_type.replace(/[_-]+/g, " ")}</p>
-                      <MaskedValue value={finding.masked_evidence} />
+                      <MaskedValue value={null} fallback="Evidence unavailable" />
                     </td>
                     <td className="px-4 py-4">
                       <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-medium ${STATUS_STYLES[finding.status]}`}>
@@ -230,9 +166,7 @@ function FindingsPage() {
                     <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">
                       {new Date(finding.created_at).toLocaleString()}
                     </td>
-                    <td className="px-4 py-4 pr-5">
-                      <CopyButton value={finding.masked_evidence} label="Copy masked" size="sm" />
-                    </td>
+                    <td className="px-4 py-4 pr-5" />
                   </tr>
                 ))}
                 {findings.length === 0 && (
@@ -264,9 +198,10 @@ function FindingsPage() {
                 <div className="mt-3 flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs font-medium">{finding.source} · {finding.detector}</p>
-                    <div className="mt-1"><MaskedValue value={finding.masked_evidence} /></div>
+                    <div className="mt-1">
+                      <MaskedValue value={null} fallback="Evidence unavailable" />
+                    </div>
                   </div>
-                  <CopyButton value={finding.masked_evidence} label="Copy masked" size="sm" className="shrink-0" />
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                   <ConfidenceBar confidence={finding.confidence} />
