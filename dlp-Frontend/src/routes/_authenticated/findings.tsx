@@ -26,6 +26,24 @@ export const Route = createFileRoute("/_authenticated/findings")({
 
 type FindingStatus = (typeof FINDING_FIXTURES)[number]["status"];
 
+type FindingFilterKey = "severity" | "classification" | "data_type" | "status" | "source" | "detector";
+
+const FILTER_FIELDS: { key: FindingFilterKey; label: string }[] = [
+  { key: "severity", label: "Severity" },
+  { key: "classification", label: "Classification" },
+  { key: "data_type", label: "Data type" },
+  { key: "status", label: "Status" },
+  { key: "source", label: "Source" },
+  { key: "detector", label: "Detector" },
+];
+
+const FILTER_OPTIONS = Object.fromEntries(
+  FILTER_FIELDS.map(({ key }) => [
+    key,
+    [...new Set(FINDING_FIXTURES.map((finding) => finding[key]))].sort(),
+  ]),
+) as Record<FindingFilterKey, string[]>;
+
 const STATUS_STYLES: Record<FindingStatus, string> = {
   open: "border-sky-500/30 bg-sky-500/10 text-sky-700",
   triaged: "border-amber-500/30 bg-amber-500/10 text-amber-700",
@@ -36,20 +54,57 @@ const STATUS_STYLES: Record<FindingStatus, string> = {
 
 function FindingsPage() {
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<Record<FindingFilterKey, string>>({
+    severity: "all",
+    classification: "all",
+    data_type: "all",
+    status: "all",
+    source: "all",
+    detector: "all",
+  });
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const findings = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return FINDING_FIXTURES;
     return FINDING_FIXTURES.filter((finding) =>
-      [
-        finding.id,
-        finding.classification,
-        finding.data_type,
-        finding.status,
-        finding.source,
-        finding.detector,
-      ].some((value) => value.toLowerCase().includes(query)),
+      (filters.severity === "all" || finding.severity === filters.severity) &&
+      (filters.classification === "all" || finding.classification === filters.classification) &&
+      (filters.data_type === "all" || finding.data_type === filters.data_type) &&
+      (filters.status === "all" || finding.status === filters.status) &&
+      (filters.source === "all" || finding.source === filters.source) &&
+      (filters.detector === "all" || finding.detector === filters.detector) &&
+      (!dateFrom || finding.created_at.slice(0, 10) >= dateFrom) &&
+      (!dateTo || finding.created_at.slice(0, 10) <= dateTo) &&
+      (!query ||
+        [
+          finding.id,
+          finding.classification,
+          finding.data_type,
+          finding.status,
+          finding.source,
+          finding.detector,
+        ].some((value) => value.toLowerCase().includes(query))),
     );
-  }, [search]);
+  }, [dateFrom, dateTo, filters, search]);
+  const hasActiveFilters =
+    search !== "" ||
+    Object.values(filters).some((value) => value !== "all") ||
+    dateFrom !== "" ||
+    dateTo !== "";
+
+  function clearFilters() {
+    setSearch("");
+    setFilters({
+      severity: "all",
+      classification: "all",
+      data_type: "all",
+      status: "all",
+      source: "all",
+      detector: "all",
+    });
+    setDateFrom("");
+    setDateTo("");
+  }
 
   return (
     <AppShell>
@@ -87,27 +142,68 @@ function FindingsPage() {
                 className="h-10 border-white/70 bg-white/60 pl-9"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="sr-only">
-                <SlidersHorizontal aria-hidden="true" />
-                Filters
-              </span>
-              {["All severities", "All statuses", "All sources"].map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  disabled
-                  title="Filters will be available when the findings API is connected"
-                  className="h-9 cursor-not-allowed rounded-md border border-input bg-white/45 px-3 text-xs text-muted-foreground opacity-70"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <span className="sr-only">
+              <SlidersHorizontal aria-hidden="true" />
+              Filters
+            </span>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Showing temporary sample findings for the explorer preview.
-          </p>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            {FILTER_FIELDS.map(({ key, label }) => (
+              <label key={key} className="min-w-0">
+                <span className="sr-only">{label}</span>
+                <select
+                  aria-label={label}
+                  value={filters[key]}
+                  onChange={(event) =>
+                    setFilters((current) => ({ ...current, [key]: event.target.value }))
+                  }
+                  className="h-9 w-full rounded-md border border-input bg-white/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="all">All {label.toLowerCase()}</option>
+                  {FILTER_OPTIONS[key].map((value) => (
+                    <option key={value} value={value}>
+                      {value.replace(/[_-]+/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <label className="min-w-0">
+              <span className="sr-only">From date</span>
+              <input
+                aria-label="From date"
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(event) => setDateFrom(event.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-white/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="min-w-0">
+              <span className="sr-only">To date</span>
+              <input
+                aria-label="To date"
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(event) => setDateTo(event.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-white/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Showing {findings.length} of {FINDING_FIXTURES.length} fixture findings.
+            </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Clear filters
+            </button>
+          </div>
         </section>
 
         <section
