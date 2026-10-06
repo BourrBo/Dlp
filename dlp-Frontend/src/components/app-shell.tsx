@@ -24,17 +24,14 @@ import { Button } from "@/components/ui/button";
 
 const NAV = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { to: "/findings", label: "Findings", icon: Search },
-  { to: "/incidents", label: "Incidents", icon: AlertTriangle },
-  { to: "/alerts", label: "Alerts", icon: Bell },
-  { to: "/reports", label: "Reports", icon: FileText },
-  { to: "/channels", label: "Channels", icon: Radio },
+  { to: "/events", label: "Findings", icon: Search },
+  { to: null, label: "Incidents", icon: AlertTriangle },
+  { to: null, label: "Alerts", icon: Bell },
+  { to: null, label: "Reports", icon: FileText },
+  { to: null, label: "Channels", icon: Radio },
   { to: "/policies", label: "Policies", icon: ShieldCheck },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: null, label: "Settings", icon: Settings },
 ] as const;
-
-// Pages that actually exist in the router — others fall back gracefully
-const EXISTING_ROUTES = new Set(["/dashboard", "/policies"]);
 
 export function AppShell({
   children,
@@ -70,7 +67,9 @@ export function AppShell({
       try {
         const { supabase } = await import("@/integrations/supabase/client");
         await supabase.auth.signOut();
-      } catch {}
+      } catch (error) {
+        console.error("Unable to sign out from Supabase", error);
+      }
     }
     navigate({ to: "/auth", replace: true });
   }
@@ -114,21 +113,17 @@ export function AppShell({
             Main Menu
           </p>
           {NAV.map((item) => {
-            // Only navigate to existing routes; others just highlight visually
-            if (!EXISTING_ROUTES.has(item.to)) {
+            if (!item.to) {
               return (
                 <button
-                  key={item.to}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors w-full text-left cursor-pointer"
+                  key={item.label}
+                  type="button"
+                  disabled
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm w-full text-left cursor-not-allowed opacity-60"
                   style={{
                     color: "oklch(0.52 0.018 250)",
                   }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "oklch(0.93 0.008 250)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "";
-                  }}
+                  title={`${item.label} is not available yet`}
                 >
                   <span
                     className="flex size-7 items-center justify-center rounded-lg"
@@ -142,7 +137,7 @@ export function AppShell({
             }
             return (
               <Link
-                key={item.to}
+                key={item.label}
                 to={item.to}
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all"
                 activeProps={{
@@ -190,7 +185,10 @@ export function AppShell({
               Real-time DLP monitoring across all channels.
             </p>
             <button
+              type="button"
+              disabled
               className="mt-3 w-full rounded-lg px-3 py-1.5 text-xs font-semibold transition-opacity hover:opacity-90 relative z-10"
+              title="Plan upgrades are not available yet"
               style={{
                 background: "oklch(1 0 0 / 0.2)",
                 color: "white",
@@ -255,6 +253,9 @@ export function AppShell({
             <input
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-sm"
               placeholder="Search findings, files, users..."
+              aria-label="Search findings, files, and users"
+              disabled
+              title="Search is not available yet"
               style={{ color: "oklch(0.25 0.015 250)" }}
             />
             <kbd
@@ -285,6 +286,10 @@ export function AppShell({
 
             {/* Notifications */}
             <button
+              type="button"
+              disabled
+              aria-label="Notifications"
+              title="Notifications are not available yet"
               className="relative flex size-9 items-center justify-center rounded-xl border transition-colors hover:bg-accent"
               style={{ borderColor: "oklch(0.88 0.008 250)", background: "oklch(0.96 0.004 250)" }}
             >
@@ -297,6 +302,10 @@ export function AppShell({
 
             {/* User */}
             <button
+              type="button"
+              disabled
+              aria-label="User profile"
+              title="Profile settings are not available yet"
               className="flex items-center gap-2 rounded-xl border px-3 py-2 transition-colors hover:bg-accent"
               style={{ borderColor: "oklch(0.88 0.008 250)", background: "oklch(0.96 0.004 250)" }}
             >
@@ -327,11 +336,14 @@ export function AppShell({
           style={{ background: "oklch(0.99 0.002 250)", borderColor: "oklch(0.90 0.007 250)" }}
         >
           {NAV.slice(0, 5).map((item) => {
-            if (!EXISTING_ROUTES.has(item.to)) {
+            if (!item.to) {
               return (
                 <button
-                  key={item.to}
-                  className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px]"
+                  key={item.label}
+                  type="button"
+                  disabled
+                  title={`${item.label} is not available yet`}
+                  className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] cursor-not-allowed opacity-60"
                   style={{ color: "oklch(0.55 0.015 250)" }}
                 >
                   <item.icon className="size-4" />
@@ -342,7 +354,7 @@ export function AppShell({
             return (
               <Link
                 key={item.to}
-                to={item.to as any}
+                to={item.to}
                 className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px]"
                 activeProps={{ style: { color: "oklch(0.44 0.17 255)" } }}
                 style={{ color: "oklch(0.55 0.015 250)" }}

@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
   Bar,
@@ -14,10 +14,10 @@ import {
   YAxis,
 } from "recharts";
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   Calendar,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Chrome,
@@ -36,13 +36,26 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/use-org";
-import { FIXTURE_MODE } from "@/lib/env";
+import { API_BASE_URL, FIXTURE_MODE } from "@/lib/env";
+import serverSecurityArtwork from "../../../../dlp images/Glossy Server Security Icon.png";
 import { AppShell } from "@/components/app-shell";
-import { SeverityBadge } from "@/components/severity-badge";
 import { ClassificationChip } from "@/components/classification-chip";
+import { DecisionBadge } from "@/components/decision-badge";
+import { SeverityBadge } from "@/components/severity-badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -59,17 +72,56 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
 });
 
-// ─── Mock / fixture data ───────────────────────────────────────────────────
+type OverviewEvent = {
+  id: string;
+  decision: string;
+  data_type: string;
+  channel: string;
+  destination: string | null;
+  confidence: number | string;
+  created_at: string;
+};
 
-const MOCK_TREND = Array.from({ length: 7 }, (_, i) => {
+type OverviewResponse = {
+  total_events: number;
+  decision_counts: Record<string, number>;
+  data_type_counts: Record<string, number>;
+  channel_counts: Record<string, number>;
+  daily_trend: { date: string; count: number }[];
+  recent_events: OverviewEvent[];
+  severity_counts: Record<string, number>;
+  classification_counts: Record<string, number>;
+};
+
+type KpiDefinition = {
+  label: string;
+  value: number;
+  previousValue: number;
+  metric: string;
+  icon: typeof FolderOpen;
+  color: string;
+  bg: string;
+  inverted: boolean;
+  pct: number;
+  spark: number[];
+};
+
+const MOCK_TREND_VALUES = [
+  { critical: 4, high: 18, medium: 32, low: 25 },
+  { critical: 8, high: 24, medium: 42, low: 31 },
+  { critical: 5, high: 15, medium: 37, low: 28 },
+  { critical: 11, high: 29, medium: 48, low: 36 },
+  { critical: 7, high: 22, medium: 39, low: 22 },
+  { critical: 9, high: 17, medium: 44, low: 33 },
+  { critical: 6, high: 26, medium: 35, low: 27 },
+];
+
+const MOCK_TREND = MOCK_TREND_VALUES.map((counts, i) => {
   const d = new Date();
   d.setDate(d.getDate() - (6 - i));
   return {
     date: d.toISOString().slice(5, 10),
-    critical: Math.round(Math.random() * 12 + 2),
-    high: Math.round(Math.random() * 25 + 8),
-    medium: Math.round(Math.random() * 40 + 15),
-    low: Math.round(Math.random() * 30 + 10),
+    ...counts,
   };
 });
 
@@ -144,6 +196,73 @@ const CHART_COLORS = {
   low: "oklch(0.54 0.17 155)",
 };
 
+const DATA_TYPE_COLORS = [
+  "oklch(0.55 0.22 25)",
+  "oklch(0.44 0.17 255)",
+  "oklch(0.62 0.18 75)",
+  "oklch(0.54 0.17 155)",
+  "oklch(0.60 0.18 310)",
+  "oklch(0.65 0.015 250)",
+];
+
+const CHANNEL_INFO = {
+  browser: { label: "Browser Agent", icon: Chrome },
+  email: { label: "Email", icon: Mail },
+  cloud_storage: { label: "Cloud storage", icon: HardDrive },
+  api: { label: "API", icon: Activity },
+} as const;
+
+const MOCK_KPIS: KpiDefinition[] = [
+  {
+    label: "Total Findings",
+    value: 847,
+    previousValue: 0,
+    metric: "total",
+    icon: FolderOpen,
+    color: "oklch(0.44 0.17 255)",
+    bg: "oklch(0.44 0.17 255 / 0.08)",
+    inverted: true,
+    pct: 12,
+    spark: [40, 55, 35, 70, 45, 80, 60],
+  },
+  {
+    label: "Critical",
+    value: 34,
+    previousValue: 0,
+    metric: "block",
+    icon: ShieldAlert,
+    color: "oklch(0.55 0.22 25)",
+    bg: "oklch(0.55 0.22 25 / 0.08)",
+    inverted: true,
+    pct: -8,
+    spark: [40, 55, 35, 70, 45, 80, 60],
+  },
+  {
+    label: "High",
+    value: 128,
+    previousValue: 0,
+    metric: "warn",
+    icon: AlertTriangle,
+    color: "oklch(0.62 0.18 45)",
+    bg: "oklch(0.62 0.18 45 / 0.08)",
+    inverted: true,
+    pct: 5,
+    spark: [40, 55, 35, 70, 45, 80, 60],
+  },
+  {
+    label: "Data Types",
+    value: 6,
+    previousValue: 0,
+    metric: "types",
+    icon: Shield,
+    color: "oklch(0.54 0.17 155)",
+    bg: "oklch(0.54 0.17 155 / 0.08)",
+    inverted: false,
+    pct: 0,
+    spark: [40, 55, 35, 70, 45, 80, 60],
+  },
+];
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function GlassCard({
@@ -157,18 +276,34 @@ function GlassCard({
 }) {
   return (
     <div
-      className={`rounded-2xl border ${className}`}
+      className={`dashboard-elevated-card rounded-2xl border ${className}`}
       style={{
-        background: "oklch(1 0 0 / 0.80)",
-        borderColor: "oklch(0.92 0.006 250)",
+        background: "oklch(0.97 0 0 / 0.78)",
+        borderColor: "oklch(1 0 0 / 0.56)",
         backdropFilter: "blur(16px)",
-        boxShadow: "0 1px 2px oklch(0 0 0 / 0.03), 0 4px 16px oklch(0 0 0 / 0.05)",
+        boxShadow:
+          "0 1px 2px oklch(0 0 0 / 0.04), 0 4px 12px oklch(0 0 0 / 0.045), 0 10px 28px oklch(0 0 0 / 0.025)",
         ...style,
       }}
     >
       {children}
     </div>
   );
+}
+
+function FindingSeverity({ severity }: { severity: string | null }) {
+  if (severity === null) {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-semibold tracking-[0.08em] uppercase text-muted-foreground"
+        role="status"
+        aria-label="Severity: Unknown"
+      >
+        Unknown
+      </span>
+    );
+  }
+  return <SeverityBadge severity={severity} />;
 }
 
 function SkeletonLine({ w = "w-full", h = "h-4" }: { w?: string; h?: string }) {
@@ -180,7 +315,23 @@ function SkeletonLine({ w = "w-full", h = "h-4" }: { w?: string; h?: string }) {
   );
 }
 
-function TrendBadge({ pct, inverted = false }: { pct: number; inverted?: boolean }) {
+function TrendBadge({ pct, inverted = false }: { pct: number | null; inverted?: boolean }) {
+  if (pct === null) {
+    return (
+      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+        style={{ background: "oklch(0.65 0.015 250 / 0.12)", color: "oklch(0.50 0.015 250)" }}>
+        —
+      </span>
+    );
+  }
+  if (pct === 0) {
+    return (
+      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+        style={{ background: "oklch(0.65 0.015 250 / 0.12)", color: "oklch(0.50 0.015 250)" }}>
+        0%
+      </span>
+    );
+  }
   const good = inverted ? pct < 0 : pct > 0;
   return (
     <span
@@ -206,29 +357,26 @@ function TrendBadge({ pct, inverted = false }: { pct: number; inverted?: boolean
 
 function DashboardPage() {
   const [range, setRange] = useState<7 | 30>(7);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanContent, setScanContent] = useState("");
+  const [scanPending, setScanPending] = useState(false);
   const { data: orgId } = useOrg();
-
-  const since = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - range);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, [range]);
+  const queryClient = useQueryClient();
 
   const events = useQuery({
     queryKey: ["dashboard-events", orgId, range],
     enabled: !!orgId,
     queryFn: async () => {
-      if (FIXTURE_MODE) return [];
-      const { data, error } = await supabase
-        .from("dlp_events")
-        .select("decision, created_at")
-        .eq("org_id", orgId!)
-        .gte("created_at", since.toISOString())
-        .order("created_at", { ascending: true })
-        .limit(5000);
-      if (error) throw error;
-      return data;
+      if (FIXTURE_MODE) return null;
+      const params = new URLSearchParams({ org_id: orgId!, days: String(range) });
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/+$/, "")}/api/overview?${params.toString()}`,
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.detail ?? `Overview request failed (${response.status}).`);
+      }
+      return data as OverviewResponse;
     },
   });
 
@@ -246,15 +394,152 @@ function DashboardPage() {
     },
   });
 
-  const rows = events.data ?? [];
+  const overview = events.data;
+  const totals = overview?.decision_counts ?? {};
+  const dailyTrend = (overview?.daily_trend ?? []).map(({ date, count }) => ({
+    date: date.slice(5),
+    count,
+  }));
 
-  const totals = useMemo(() => {
-    const t: Record<string, number> = { allow: 0, warn: 0, block: 0, log: 0 };
-    for (const r of rows) t[r.decision] = (t[r.decision] ?? 0) + 1;
-    return t;
-  }, [rows]);
+  const typeDistribution = useMemo(() => {
+    if (FIXTURE_MODE) return MOCK_DONUT;
+    return Object.entries(overview?.data_type_counts ?? {}).map(([name, value], i) => ({
+      name: name.replace(/[_-]+/g, " ").replace(/\b\w/g, (part) => part.toUpperCase()),
+      value,
+      color: DATA_TYPE_COLORS[i % DATA_TYPE_COLORS.length],
+    }));
+  }, [overview]);
 
-  const totalFindings = Object.values(totals).reduce((a, b) => a + b, 0);
+  const channelActivity = useMemo(() => {
+    if (FIXTURE_MODE) {
+      return MOCK_CHANNEL_ACTIVITY.map(({ name, ...channel }) => ({ ...channel, label: name }));
+    }
+    const counts = Object.entries(overview?.channel_counts ?? {});
+    const maxCount = Math.max(1, ...counts.map(([, count]) => count));
+    return counts
+      .sort((a, b) => b[1] - a[1])
+      .map(([channel, count]) => ({
+        ...CHANNEL_INFO[channel as keyof typeof CHANNEL_INFO] ?? {
+          label: channel.replace(/[_-]+/g, " ").replace(/\b\w/g, (part) => part.toUpperCase()),
+          icon: Activity,
+        },
+        events: count,
+        pct: Math.round((count / maxCount) * 100),
+      }));
+  }, [overview]);
+
+  const recentFindings = (overview?.recent_events ?? []).slice(0, 5);
+  const displayedFindings = FIXTURE_MODE
+    ? MOCK_FINDINGS
+    : recentFindings.map((finding) => ({
+        id: finding.id,
+        severity: null,
+        classification: null,
+        title: `${finding.data_type.replace(/[_-]+/g, " ")} detected`,
+        source: CHANNEL_INFO[finding.channel as keyof typeof CHANNEL_INFO]?.label ?? finding.channel,
+        user: "—",
+        time: new Date(finding.created_at).toLocaleString(),
+      }));
+
+  const totalFindings = FIXTURE_MODE ? 847 : overview?.total_events ?? 0;
+  const dataTypeCount = FIXTURE_MODE ? 6 : Object.keys(overview?.data_type_counts ?? {}).length;
+  const totalDailyEvents = dailyTrend.map((day) => day.count);
+  const totalSpark = Array.from({ length: 7 }, (_, index) => {
+    const start = Math.floor((index * totalDailyEvents.length) / 7);
+    const end = Math.floor(((index + 1) * totalDailyEvents.length) / 7);
+    return totalDailyEvents.slice(start, end).reduce((sum, count) => sum + count, 0);
+  });
+
+  const liveKpis: KpiDefinition[] = ([
+    {
+      label: "Total Findings",
+      value: totalFindings,
+      previousValue: 0,
+      metric: "total",
+      icon: FolderOpen,
+      color: "oklch(0.44 0.17 255)",
+      bg: "oklch(0.44 0.17 255 / 0.08)",
+      inverted: true,
+    },
+    {
+      label: "Blocked",
+      value: totals["block"] ?? 0,
+      previousValue: 0,
+      metric: "block",
+      icon: ShieldAlert,
+      color: "oklch(0.55 0.22 25)",
+      bg: "oklch(0.55 0.22 25 / 0.08)",
+      inverted: true,
+    },
+    {
+      label: "Warned",
+      value: totals["warn"] ?? 0,
+      previousValue: 0,
+      metric: "warn",
+      icon: AlertTriangle,
+      color: "oklch(0.62 0.18 45)",
+      bg: "oklch(0.62 0.18 45 / 0.08)",
+      inverted: true,
+    },
+    {
+      label: "Data Types",
+      value: dataTypeCount,
+      previousValue: 0,
+      metric: "types",
+      icon: Shield,
+      color: "oklch(0.54 0.17 155)",
+      bg: "oklch(0.54 0.17 155 / 0.08)",
+      inverted: false,
+    },
+  ] satisfies Omit<KpiDefinition, "pct" | "spark">[]).map((kpi) => ({
+    ...kpi,
+    pct: null,
+    spark: kpi.metric === "total" ? totalSpark : [],
+  }));
+  const kpis = FIXTURE_MODE ? MOCK_KPIS : liveKpis;
+
+  async function runScan(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!orgId || FIXTURE_MODE) return;
+    setScanPending(true);
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) throw error;
+      if (!data.user) throw new Error("Sign in before running a scan.");
+
+      const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}/api/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          org_id: orgId,
+          user_id: data.user.id,
+          channel: "api",
+          destination: "manual-dashboard-scan",
+          content: scanContent,
+          filename: null,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(result?.detail ?? `Scan request failed (${response.status}).`);
+      }
+      if (!result || typeof result.decision !== "string" || typeof result.reason !== "string") {
+        throw new Error("The scan service returned an invalid response.");
+      }
+
+      toast.success(`Scan ${result.decision}: ${result.reason}`);
+      setScanOpen(false);
+      setScanContent("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dashboard-events", orgId] }),
+        queryClient.invalidateQueries({ queryKey: ["events", orgId] }),
+      ]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not run scan.");
+    } finally {
+      setScanPending(false);
+    }
+  }
 
   // ── Channel status rows ──────────────────────────────────────────────────
   const CHANNEL_STATUS = [
@@ -273,6 +558,20 @@ function DashboardPage() {
 
   return (
     <AppShell>
+      <style>{`
+        .dashboard-elevated-card {
+          transition: transform 220ms ease, box-shadow 220ms ease;
+        }
+        @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+          .dashboard-elevated-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px oklch(0 0 0 / 0.12), 0 4px 10px oklch(0 0 0 / 0.07) !important;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .dashboard-elevated-card { transition: none; }
+        }
+      `}</style>
       <div
         className="px-6 py-6 space-y-6"
         style={{ minHeight: "calc(100vh - 56px)" }}
@@ -288,7 +587,7 @@ function DashboardPage() {
             </p>
           </div>
           {/* Date range selector */}
-          <button
+          <label
             className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors hover:bg-white/60"
             style={{
               background: "oklch(1 0 0 / 0.7)",
@@ -297,32 +596,42 @@ function DashboardPage() {
             }}
           >
             <Calendar className="size-4" style={{ color: "oklch(0.44 0.17 255)" }} />
-            <span className="font-medium">{dateLabel}</span>
-            <span style={{ color: "oklch(0.65 0.015 250)" }}>— Last {range} days</span>
+            <span className="sr-only">Dashboard date range</span>
+            <select
+              aria-label="Dashboard date range"
+              className="cursor-pointer appearance-none bg-transparent font-medium outline-none"
+              value={range}
+              onChange={(event) => setRange(event.target.value === "30" ? 30 : 7)}
+            >
+              <option value={7}>{dateLabel} — Last 7 days</option>
+              <option value={30}>{dateLabel} — Last 30 days</option>
+            </select>
             <ChevronDown className="size-3.5" style={{ color: "oklch(0.55 0.015 250)" }} />
-          </button>
+          </label>
         </div>
 
         {/* ── Hero card ────────────────────────────────────────────────────── */}
         <div
-          className="relative overflow-hidden rounded-2xl p-7"
+          className="dashboard-elevated-card relative overflow-hidden rounded-2xl border p-7 backdrop-blur-xl"
           style={{
-            background: "linear-gradient(135deg, oklch(0.18 0.015 255) 0%, oklch(0.28 0.20 275) 60%, oklch(0.38 0.18 305) 100%)",
-            boxShadow: "0 8px 32px oklch(0.28 0.18 275 / 0.35)",
+            background: "linear-gradient(135deg, oklch(0.12 0 0 / 0.94), oklch(0.20 0 0 / 0.88))",
+            borderColor: "oklch(1 0 0 / 0.18)",
+            boxShadow:
+              "0 12px 36px oklch(0 0 0 / 0.28), inset 0 1px 0 oklch(1 0 0 / 0.10)",
           }}
         >
           {/* Decorative circles */}
           <div
             className="absolute -top-8 -right-8 size-40 rounded-full opacity-10"
-            style={{ background: "white" }}
+            style={{ background: "oklch(1 0 0 / 0.30)" }}
           />
           <div
             className="absolute top-4 right-32 size-20 rounded-full opacity-10"
-            style={{ background: "white" }}
+            style={{ background: "oklch(1 0 0 / 0.24)" }}
           />
           <div
             className="absolute -bottom-10 right-16 size-28 rounded-full opacity-10"
-            style={{ background: "white" }}
+            style={{ background: "oklch(1 0 0 / 0.20)" }}
           />
 
           <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
@@ -349,6 +658,10 @@ function DashboardPage() {
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <button
+                  type="button"
+                  disabled={!orgId || FIXTURE_MODE}
+                  onClick={() => setScanOpen(true)}
+                  title={FIXTURE_MODE ? "Scanning requires a configured Supabase account" : undefined}
                   className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all hover:shadow-lg"
                   style={{
                     background: "oklch(1 0 0)",
@@ -356,11 +669,12 @@ function DashboardPage() {
                     boxShadow: "0 2px 8px oklch(0 0 0 / 0.15)",
                   }}
                 >
-                  <ScanSearch className="size-4" style={{ color: "oklch(0.44 0.17 255)" }} />
+                  <ScanSearch className="size-4" style={{ color: "oklch(0.35 0 0)" }} />
                   Run New Scan
                   <ArrowRight className="size-3.5" />
                 </button>
-                <button
+                <Link
+                  to="/events"
                   className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-80"
                   style={{
                     background: "oklch(1 0 0 / 0.12)",
@@ -370,101 +684,41 @@ function DashboardPage() {
                 >
                   <FileText className="size-4" />
                   View Findings
-                </button>
+                </Link>
               </div>
             </div>
 
-            {/* Hero illustration */}
-            <div className="flex items-center gap-4">
-              <div className="flex flex-col gap-3">
-                <div
-                  className="flex items-center gap-2 rounded-xl border px-3 py-2"
-                  style={{
-                    background: "rgba(223, 235, 255, 0.14)",
-                    borderColor: "rgba(255, 255, 255, 0.24)",
-                    backdropFilter: "blur(14px)",
-                    boxShadow:
-                      "0 8px 24px rgba(7, 16, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22)",
-                  }}
-                >
-                  <Shield className="size-5" style={{ color: "oklch(0.80 0.10 155)" }} />
-                  <div>
-                    <p className="text-[10px] font-medium" style={{ color: "oklch(0.70 0.006 250)" }}>Protected</p>
-                    <p className="text-sm font-bold text-white">24/7</p>
-                  </div>
-                </div>
-                <div
-                  className="flex items-center gap-2 rounded-xl border px-3 py-2"
-                  style={{
-                    background: "rgba(223, 235, 255, 0.14)",
-                    borderColor: "rgba(255, 255, 255, 0.24)",
-                    backdropFilter: "blur(14px)",
-                    boxShadow:
-                      "0 8px 24px rgba(7, 16, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.22)",
-                  }}
-                >
-                  <ShieldAlert className="size-5" style={{ color: "oklch(0.75 0.18 45)" }} />
-                  <div>
-                    <p className="text-[10px] font-medium" style={{ color: "oklch(0.70 0.006 250)" }}>Findings</p>
-                    <p className="text-sm font-bold text-white">
-                      {totalFindings || "—"}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              {/* Hero illustration */}
               <div
-                className="flex size-20 items-center justify-center rounded-2xl"
+                className="relative flex w-full max-w-72 shrink-0 items-center justify-center overflow-hidden rounded-[28px] border p-4 sm:w-[32%] sm:min-w-64"
                 style={{
-                  background: "oklch(1 0 0 / 0.12)",
-                  border: "1px solid oklch(1 0 0 / 0.2)",
+                  aspectRatio: "1 / 1",
+                  background: "linear-gradient(145deg, oklch(1 0 0 / 0.10), oklch(1 0 0 / 0.04))",
+                  borderColor: "oklch(1 0 0 / 0.20)",
+                  boxShadow:
+                    "0 10px 28px oklch(0 0 0 / 0.24), inset 0 1px 0 oklch(1 0 0 / 0.16)",
                 }}
               >
-                <Shield className="size-10 text-white/80" />
+                <img
+                  src={serverSecurityArtwork}
+                  alt="Servers protected by a shield and lock"
+                  className="relative z-10 block h-full w-full object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.32)]"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-10"
+                  style={{
+                    background:
+                      "linear-gradient(to bottom, transparent, oklch(0.16 0 0 / 0.18))",
+                  }}
+                />
               </div>
             </div>
           </div>
-        </div>
 
         {/* ── KPI cards ────────────────────────────────────────────────────── */}
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            {
-              label: "Total Findings",
-              value: totalFindings || 847,
-              pct: 12,
-              icon: FolderOpen,
-              color: "oklch(0.44 0.17 255)",
-              bg: "oklch(0.44 0.17 255 / 0.08)",
-              inverted: true,
-            },
-            {
-              label: "Critical",
-              value: totals.block || 34,
-              pct: -8,
-              icon: ShieldAlert,
-              color: "oklch(0.55 0.22 25)",
-              bg: "oklch(0.55 0.22 25 / 0.08)",
-              inverted: true,
-            },
-            {
-              label: "High",
-              value: totals.warn || 128,
-              pct: 5,
-              icon: AlertTriangle,
-              color: "oklch(0.62 0.18 45)",
-              bg: "oklch(0.62 0.18 45 / 0.08)",
-              inverted: true,
-            },
-            {
-              label: "Data Types",
-              value: 6,
-              pct: 0,
-              icon: Shield,
-              color: "oklch(0.54 0.17 155)",
-              bg: "oklch(0.54 0.17 155 / 0.08)",
-              inverted: false,
-            },
-          ].map((kpi) => (
+          {kpis.map((kpi) => (
             <GlassCard key={kpi.label} className="p-5">
               <div className="flex items-start justify-between">
                 <div
@@ -496,14 +750,14 @@ function DashboardPage() {
                   </p>
                   {/* Mini trend bars */}
                   <div className="mt-3 flex items-end gap-0.5 h-6">
-                    {[40, 55, 35, 70, 45, 80, 60].map((h, i) => (
+                    {kpi.spark.map((value, i) => (
                       <div
                         key={i}
                         className="flex-1 rounded-sm"
                         style={{
-                          height: `${h}%`,
+                          height: `${value === 0 ? 0 : Math.max(8, (value / Math.max(...kpi.spark, 1)) * 100)}%`,
                           background: kpi.color,
-                          opacity: i === 6 ? 1 : 0.3 + i * 0.1,
+                          opacity: i === 6 ? 1 : 0.45,
                         }}
                       />
                     ))}
@@ -521,10 +775,10 @@ function DashboardPage() {
             <div className="flex items-start justify-between mb-5">
               <div>
                 <h2 className="text-sm font-semibold" style={{ color: "oklch(0.18 0.015 250)" }}>
-                  Findings Trend
+                  {FIXTURE_MODE ? "Findings Trend" : "Event Trend"}
                 </h2>
                 <p className="mt-0.5 text-xs" style={{ color: "oklch(0.55 0.015 250)" }}>
-                  Daily findings by severity
+                  {FIXTURE_MODE ? "Daily findings by severity"                   : "Daily event volume"}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -552,12 +806,19 @@ function DashboardPage() {
 
             {/* Legend */}
             <div className="flex flex-wrap gap-3 mb-4">
-              {(["critical", "high", "medium", "low"] as const).map((s) => (
-                <div key={s} className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.50 0.015 250)" }}>
-                  <span className="size-2 rounded-sm" style={{ background: CHART_COLORS[s] }} />
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </div>
-              ))}
+              {FIXTURE_MODE
+                ? (["critical", "high", "medium", "low"] as const).map((severity) => (
+                    <div key={severity} className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.50 0.015 250)" }}>
+                      <span className="size-2 rounded-sm" style={{ background: CHART_COLORS[severity] }} />
+                      {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                    </div>
+                  ))
+                : (
+                    <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.50 0.015 250)" }}>
+                      <span className="size-2 rounded-sm" style={{ background: "oklch(0.44 0.17 255)" }} />
+                      Events
+                    </div>
+                  )}
             </div>
 
             <div className="h-60">
@@ -567,7 +828,11 @@ function DashboardPage() {
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={MOCK_TREND} barSize={14} barCategoryGap="30%">
+                  <BarChart
+                    data={FIXTURE_MODE ? MOCK_TREND : dailyTrend}
+                    barSize={14}
+                    barCategoryGap="30%"
+                  >
                     <CartesianGrid vertical={false} stroke="oklch(0.90 0.006 250)" />
                     <XAxis
                       dataKey="date"
@@ -594,15 +859,23 @@ function DashboardPage() {
                         boxShadow: "0 4px 16px oklch(0 0 0 / 0.08)",
                       }}
                     />
-                    {(["low", "medium", "high", "critical"] as const).map((s) => (
-                      <Bar
-                        key={s}
-                        dataKey={s}
-                        stackId="a"
-                        fill={CHART_COLORS[s]}
-                        radius={s === "critical" ? [4, 4, 0, 0] : 0}
-                      />
-                    ))}
+                    {FIXTURE_MODE
+                      ? (["low", "medium", "high", "critical"] as const).map((severity) => (
+                          <Bar
+                            key={severity}
+                            dataKey={severity}
+                            stackId="a"
+                            fill={CHART_COLORS[severity]}
+                            radius={severity === "critical" ? [4, 4, 0, 0] : 0}
+                          />
+                        ))
+                      : (
+                          <Bar
+                            dataKey="count"
+                            fill="oklch(0.44 0.17 255)"
+                            radius={[4, 4, 0, 0]}
+                          />
+                        )}
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -621,6 +894,8 @@ function DashboardPage() {
                 </p>
               </div>
               <button
+                type="button"
+                onClick={() => setRange((value) => value === 7 ? 30 : 7)}
                 className="text-xs rounded-lg border px-2 py-1"
                 style={{
                   color: "oklch(0.44 0.17 255)",
@@ -636,7 +911,7 @@ function DashboardPage() {
               <ResponsiveContainer width={160} height={160}>
                 <PieChart>
                   <Pie
-                    data={MOCK_DONUT}
+                    data={typeDistribution}
                     cx="50%"
                     cy="50%"
                     innerRadius={48}
@@ -644,8 +919,8 @@ function DashboardPage() {
                     paddingAngle={3}
                     dataKey="value"
                   >
-                    {MOCK_DONUT.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
+                    {typeDistribution.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -661,17 +936,23 @@ function DashboardPage() {
             </div>
 
             <div className="mt-3 space-y-2">
-              {MOCK_DONUT.map((item) => (
+              {typeDistribution.map((item) => (
                 <div key={item.name} className="flex items-center gap-2 text-xs">
                   <span className="size-2.5 shrink-0 rounded-sm" style={{ background: item.color }} />
                   <span className="flex-1" style={{ color: "oklch(0.35 0.015 250)" }}>
                     {item.name}
                   </span>
                   <span className="font-semibold tabular-nums" style={{ color: "oklch(0.22 0.015 250)" }}>
-                    {item.value}%
+                    {FIXTURE_MODE
+                      ? item.value
+                      : Math.round((item.value / Math.max(totalFindings, 1)) * 100)}
+                    %
                   </span>
                 </div>
               ))}
+              {!typeDistribution.length && (
+                <p className="text-center text-xs text-muted-foreground">No findings in this date range.</p>
+              )}
             </div>
           </GlassCard>
         </div>
@@ -690,6 +971,8 @@ function DashboardPage() {
                 </p>
               </div>
               <button
+                type="button"
+                onClick={() => setRange((value) => value === 7 ? 30 : 7)}
                 className="text-xs rounded-lg border px-2 py-1"
                 style={{
                   color: "oklch(0.44 0.17 255)",
@@ -702,8 +985,8 @@ function DashboardPage() {
             </div>
 
             <div className="space-y-3">
-              {MOCK_CHANNEL_ACTIVITY.map((ch) => (
-                <div key={ch.name} className="flex items-center gap-3">
+              {channelActivity.map((ch) => (
+                <div key={ch.label} className="flex items-center gap-3">
                   <div
                     className="flex size-9 shrink-0 items-center justify-center rounded-xl"
                     style={{ background: "oklch(0.93 0.006 250)" }}
@@ -713,7 +996,7 @@ function DashboardPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-medium" style={{ color: "oklch(0.25 0.015 250)" }}>
-                        {ch.name}
+                        {ch.label}
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs tabular-nums font-semibold" style={{ color: "oklch(0.22 0.015 250)" }}>
@@ -739,6 +1022,9 @@ function DashboardPage() {
                   </div>
                 </div>
               ))}
+              {!channelActivity.length && (
+                <p className="text-center text-xs text-muted-foreground">No channel activity in this date range.</p>
+              )}
             </div>
           </GlassCard>
 
@@ -754,7 +1040,10 @@ function DashboardPage() {
                 </p>
               </div>
               <button
-                className="flex items-center gap-1 text-xs font-medium"
+                type="button"
+                disabled
+                title="Channel management is not available yet"
+                className="flex items-center gap-1 text-xs font-medium cursor-not-allowed opacity-60"
                 style={{ color: "oklch(0.44 0.17 255)" }}
               >
                 View All
@@ -776,11 +1065,12 @@ function DashboardPage() {
               ) : (
                 CHANNEL_STATUS.map((ch) => {
                   const row = channels.data?.find((x) => x.channel_type === ch.key);
-                  const connected = !!row?.connected_at;
+                  const connectedAt = row?.connected_at;
+                  const connected = !!connectedAt;
                   return (
                     <div
                       key={ch.key}
-                      className="flex items-center gap-3 rounded-xl p-3 transition-colors cursor-pointer hover:bg-white/50"
+                      className="flex items-center gap-3 rounded-xl p-3"
                       style={{ border: "1px solid oklch(0.92 0.006 250)" }}
                     >
                       <div
@@ -805,7 +1095,9 @@ function DashboardPage() {
                           {ch.label}
                         </p>
                         <p className="text-[10px]" style={{ color: "oklch(0.60 0.012 250)" }}>
-                          {connected ? `Synced ${ch.lastSync}` : "Not connected"}
+                          {connectedAt
+                            ? `Synced ${FIXTURE_MODE ? ch.lastSync : new Date(connectedAt).toLocaleString()}`
+                            : "Not connected"}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -853,13 +1145,14 @@ function DashboardPage() {
                 Latest policy violations detected across channels
               </p>
             </div>
-            <button
+            <Link
+              to="/events"
               className="flex items-center gap-1 text-xs font-medium"
               style={{ color: "oklch(0.44 0.17 255)" }}
             >
               View All
               <ExternalLink className="size-3" />
-            </button>
+            </Link>
           </div>
 
           {/* Desktop table */}
@@ -879,31 +1172,40 @@ function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: "oklch(0.92 0.005 250)" }}>
-                {MOCK_FINDINGS.map((f) => (
-                  <tr key={f.id} className="group">
+                {events.isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-muted-foreground">Loading findings...</td>
+                  </tr>
+                ) : displayedFindings.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-muted-foreground">No findings in this date range.</td>
+                  </tr>
+                ) : displayedFindings.map((finding) => (
+                  <tr key={finding.id} className="group">
                     <td className="py-3 pr-4">
-                      <SeverityBadge severity={f.severity} />
+                      <FindingSeverity severity={finding.severity} />
                     </td>
                     <td className="py-3 pr-4">
-                      <ClassificationChip classification={f.dataType} />
+                      <ClassificationChip classification={FIXTURE_MODE ? finding.dataType : null} />
                     </td>
                     <td
                       className="py-3 pr-4 max-w-[200px] truncate font-medium"
                       style={{ color: "oklch(0.22 0.015 250)" }}
                     >
-                      {f.title}
+                      {finding.title}
                     </td>
                     <td className="py-3 pr-4" style={{ color: "oklch(0.45 0.015 250)" }}>
-                      {f.source}
+                      {finding.source}
                     </td>
                     <td className="py-3 pr-4 font-mono" style={{ color: "oklch(0.50 0.015 250)" }}>
-                      {f.user.replace(/@.*/, "@…")}
+                      {finding.user.replace(/@.*/, "@…")}
                     </td>
                     <td className="py-3 pr-4" style={{ color: "oklch(0.60 0.012 250)" }}>
-                      {f.time}
+                      {finding.time}
                     </td>
                     <td className="py-3">
-                      <button
+                      <Link
+                        to="/events"
                         className="flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity"
                         style={{
                           color: "oklch(0.44 0.17 255)",
@@ -912,7 +1214,7 @@ function DashboardPage() {
                       >
                         Review
                         <ArrowRight className="size-3" />
-                      </button>
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -922,37 +1224,42 @@ function DashboardPage() {
 
           {/* Mobile list */}
           <div className="sm:hidden space-y-3">
-            {MOCK_FINDINGS.map((f) => (
-              <div
-                key={f.id}
+            {displayedFindings.map((finding) => (
+              <Link
+                key={finding.id}
+                to="/events"
+                aria-label={`View details for ${finding.title}`}
                 className="rounded-xl border p-3"
                 style={{ borderColor: "oklch(0.90 0.006 250)" }}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <SeverityBadge severity={f.severity} />
+                  <FindingSeverity severity={finding.severity} />
                   <span className="text-[10px]" style={{ color: "oklch(0.60 0.012 250)" }}>
-                    {f.time}
+                    {finding.time}
                   </span>
                 </div>
                 <p className="mt-2 text-xs font-medium" style={{ color: "oklch(0.22 0.015 250)" }}>
-                  {f.title}
+                  {finding.title}
                 </p>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <ClassificationChip classification={f.dataType} />
+                  <ClassificationChip classification={FIXTURE_MODE ? finding.dataType : null} />
                   <span className="text-[10px]" style={{ color: "oklch(0.55 0.015 250)" }}>
-                    {f.source}
+                    {finding.source}
                   </span>
                 </div>
-              </div>
+              </Link>
             ))}
+            {!events.isLoading && !displayedFindings.length && (
+              <p className="py-8 text-center text-xs text-muted-foreground">No findings in this date range.</p>
+            )}
           </div>
         </GlassCard>
 
         {/* ── Events by decision (preserved from original) ─────────────────── */}
-        {rows.length > 0 && (
+        {!FIXTURE_MODE && (overview?.total_events ?? 0) > 0 && (
           <GlassCard className="p-5">
             <h2 className="text-sm font-semibold mb-1" style={{ color: "oklch(0.18 0.015 250)" }}>
-              Events by Decision
+              Event Volume
             </h2>
             <p className="text-xs mb-5" style={{ color: "oklch(0.55 0.015 250)" }}>
               Daily volume — last {range} days
@@ -960,15 +1267,7 @@ function DashboardPage() {
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={Array.from({ length: range }, (_, i) => {
-                    const d = new Date();
-                    d.setDate(d.getDate() - (range - 1 - i));
-                    const key = d.toISOString().slice(0, 10);
-                    const bucket = rows.filter((r) => r.created_at.slice(0, 10) === key);
-                    const counts: Record<string, number> = { allow: 0, warn: 0, block: 0, log: 0 };
-                    for (const r of bucket) counts[r.decision] = (counts[r.decision] ?? 0) + 1;
-                    return { date: key.slice(5), ...counts };
-                  })}
+                  data={dailyTrend}
                 >
                   <CartesianGrid vertical={false} stroke="oklch(0.90 0.006 250)" />
                   <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={11} stroke="oklch(0.60 0.012 250)" />
@@ -982,10 +1281,7 @@ function DashboardPage() {
                       fontSize: 12,
                     }}
                   />
-                  <Bar dataKey="allow" stackId="a" fill="oklch(0.54 0.17 155)" />
-                  <Bar dataKey="warn" stackId="a" fill="oklch(0.62 0.18 75)" />
-                  <Bar dataKey="block" stackId="a" fill="oklch(0.55 0.22 25)" />
-                  <Bar dataKey="log" stackId="a" fill="oklch(0.65 0.015 250)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" fill="oklch(0.44 0.17 255)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -995,9 +1291,35 @@ function DashboardPage() {
         {/* Bottom padding */}
         <div className="h-4" />
       </div>
+      <Dialog open={scanOpen} onOpenChange={(open) => !scanPending && setScanOpen(open)}>
+        <DialogContent>
+          <form onSubmit={runScan} className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Run a new scan</DialogTitle>
+              <DialogDescription>
+                Enter text to scan using your organization&apos;s configured detection rules and policies.
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              autoFocus
+              required
+              aria-label="Text to scan"
+              placeholder="Paste text to scan..."
+              value={scanContent}
+              onChange={(event) => setScanContent(event.target.value)}
+              className="min-h-40"
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={scanPending} onClick={() => setScanOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={scanPending || !scanContent.trim()}>
+                {scanPending ? "Scanning..." : "Scan text"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
-
-// Keep unused imports in scope to avoid TS errors
-void CheckCircle2;
