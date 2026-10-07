@@ -8,6 +8,12 @@ import { ConfidenceBar } from "@/components/confidence-bar";
 import { MaskedValue } from "@/components/masked-value";
 import { SeverityBadge } from "@/components/severity-badge";
 import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { FINDING_FIXTURES } from "@/lib/fixtures/findings";
 
 export const Route = createFileRoute("/_authenticated/findings")({
@@ -79,6 +85,9 @@ function FindingsPage() {
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<FindingSort>(null);
   const [cursorHistory, setCursorHistory] = useState<(FindingCursor | null)[]>([null]);
+  const [selectedFinding, setSelectedFinding] = useState<(typeof FINDING_FIXTURES)[number] | null>(
+    null,
+  );
   const filteredFindings = useMemo(() => {
     const query = search.trim().toLowerCase();
     return FINDING_FIXTURES.filter((finding) =>
@@ -221,6 +230,12 @@ function FindingsPage() {
 
   return (
     <AppShell>
+      <Sheet
+        open={selectedFinding !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedFinding(null);
+        }}
+      >
       <main className="space-y-6 px-6 py-6" style={{ minHeight: "calc(100vh - 56px)" }}>
         <header>
           <h1 className="text-2xl font-bold" style={{ color: "oklch(0.15 0.015 250)" }}>
@@ -362,7 +377,20 @@ function FindingsPage() {
               </thead>
               <tbody className="divide-y" style={{ borderColor: "oklch(0.92 0.005 250)" }}>
                 {pageFindings.map((finding) => (
-                  <tr key={finding.id} className="transition-colors hover:bg-white/45">
+                  <tr
+                    key={finding.id}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`View finding ${finding.id}`}
+                    onClick={() => setSelectedFinding(finding)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedFinding(finding);
+                      }
+                    }}
+                    className="cursor-pointer transition-colors hover:bg-white/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
                     <td className="whitespace-nowrap px-4 py-4 pl-5">
                       <SeverityBadge severity={finding.severity} />
                     </td>
@@ -400,7 +428,20 @@ function FindingsPage() {
 
           <div className="space-y-3 p-4 lg:hidden">
             {pageFindings.map((finding) => (
-              <article key={finding.id} className="rounded-xl border border-border/70 bg-white/45 p-4 shadow-sm">
+              <article
+                key={finding.id}
+                tabIndex={0}
+                role="button"
+                aria-label={`View finding ${finding.id}`}
+                onClick={() => setSelectedFinding(finding)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedFinding(finding);
+                  }
+                }}
+                className="cursor-pointer rounded-xl border border-border/70 bg-white/45 p-4 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <SeverityBadge severity={finding.severity} />
                   <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-medium ${STATUS_STYLES[finding.status]}`}>
@@ -455,6 +496,71 @@ function FindingsPage() {
           </div>
         </section>
       </main>
+      {selectedFinding && (
+        <SheetContent
+          side="right"
+          aria-label={`Finding details: ${selectedFinding.id}`}
+          className="w-full overflow-y-auto border-l border-white/70 bg-[oklch(0.98_0.005_250/0.96)] p-0 shadow-2xl backdrop-blur-xl sm:max-w-lg"
+        >
+          <div className="border-b border-border/70 px-6 py-5">
+            <SheetTitle className="pr-10 text-lg">Finding details</SheetTitle>
+            <SheetDescription className="mt-1 break-all font-mono text-xs">
+              {selectedFinding.id}
+            </SheetDescription>
+          </div>
+          <div className="space-y-6 px-6 py-5">
+            <section aria-label="Finding attributes">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-5">
+                {[
+                  ["Severity", selectedFinding.severity],
+                  ["Classification", selectedFinding.classification],
+                  ["Data type", selectedFinding.data_type.replace(/[_-]+/g, " ")],
+                  ["Status", selectedFinding.status.replace(/_/g, " ")],
+                  ["Source", selectedFinding.source],
+                  ["Detector", selectedFinding.detector],
+                  ["Confidence", `${Math.round(selectedFinding.confidence * 100)}%`],
+                  ["Created / detected", new Date(selectedFinding.created_at).toLocaleString()],
+                  [
+                    "Location",
+                    `/${selectedFinding.source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}/item-${selectedFinding.id.slice(-2)}`,
+                  ],
+                  [
+                    "Policy",
+                    `${selectedFinding.classification.replace(/[^a-z0-9]+/gi, "-").toUpperCase()}-POLICY`,
+                  ],
+                  [
+                    "Decision",
+                    selectedFinding.status === "fixed"
+                      ? "Remediated"
+                      : selectedFinding.status === "accepted"
+                        ? "Risk accepted"
+                        : selectedFinding.status === "false_positive"
+                          ? "Marked false positive"
+                          : "Review required",
+                  ],
+                  ["Fingerprint", `fp_${selectedFinding.id.slice(-4)}_a91c`],
+                ].map(([label, value]) => (
+                  <div key={label} className="min-w-0">
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {label}
+                    </dt>
+                    <dd className="mt-1 break-words text-sm font-medium capitalize text-foreground">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+            <section className="rounded-xl border border-border/70 bg-white/65 p-4">
+              <h3 className="text-xs font-semibold text-muted-foreground">Masked evidence</h3>
+              <div className="mt-2">
+                <MaskedValue value={null} fallback="Evidence unavailable — sensitive value hidden" />
+              </div>
+            </section>
+          </div>
+        </SheetContent>
+      )}
+      </Sheet>
     </AppShell>
   );
 }
