@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { ArrowDown, ArrowUp, Search, SlidersHorizontal } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { ClassificationChip } from "@/components/classification-chip";
@@ -27,6 +27,16 @@ export const Route = createFileRoute("/_authenticated/findings")({
 type FindingStatus = (typeof FINDING_FIXTURES)[number]["status"];
 
 type FindingFilterKey = "severity" | "classification" | "data_type" | "status" | "source" | "detector";
+type FindingSortKey = "created_at" | "severity" | "confidence";
+type SortDirection = "asc" | "desc";
+type FindingSort = { key: FindingSortKey; direction: SortDirection } | null;
+
+const SEVERITY_ORDER: Record<(typeof FINDING_FIXTURES)[number]["severity"], number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
+};
 
 const FILTER_FIELDS: { key: FindingFilterKey; label: string }[] = [
   { key: "severity", label: "Severity" },
@@ -64,7 +74,8 @@ function FindingsPage() {
   });
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const findings = useMemo(() => {
+  const [sort, setSort] = useState<FindingSort>(null);
+  const filteredFindings = useMemo(() => {
     const query = search.trim().toLowerCase();
     return FINDING_FIXTURES.filter((finding) =>
       (filters.severity === "all" || finding.severity === filters.severity) &&
@@ -86,6 +97,74 @@ function FindingsPage() {
         ].some((value) => value.toLowerCase().includes(query))),
     );
   }, [dateFrom, dateTo, filters, search]);
+  const findings = useMemo(() => {
+    if (!sort) return filteredFindings;
+
+    const direction = sort.direction === "asc" ? 1 : -1;
+    return [...filteredFindings].sort((left, right) => {
+      if (sort.key === "severity") {
+        const leftSeverity = SEVERITY_ORDER[left.severity] ?? Number.MAX_SAFE_INTEGER;
+        const rightSeverity = SEVERITY_ORDER[right.severity] ?? Number.MAX_SAFE_INTEGER;
+        return (leftSeverity - rightSeverity) * direction;
+      }
+
+      if (sort.key === "confidence") {
+        const leftConfidence = left.confidence;
+        const rightConfidence = right.confidence;
+        const leftMissing = typeof leftConfidence !== "number" || !Number.isFinite(leftConfidence);
+        const rightMissing = typeof rightConfidence !== "number" || !Number.isFinite(rightConfidence);
+        if (leftMissing) return rightMissing ? 0 : 1;
+        if (rightMissing) return -1;
+        return (leftConfidence - rightConfidence) * direction;
+      }
+
+      const leftDate = typeof left.created_at === "string" ? Date.parse(left.created_at) : Number.NaN;
+      const rightDate = typeof right.created_at === "string" ? Date.parse(right.created_at) : Number.NaN;
+      if (Number.isNaN(leftDate)) return Number.isNaN(rightDate) ? 0 : 1;
+      if (Number.isNaN(rightDate)) return -1;
+      return (leftDate - rightDate) * direction;
+    });
+  }, [filteredFindings, sort]);
+
+  function toggleSort(key: FindingSortKey) {
+    setSort((current) => ({
+      key,
+      direction: current?.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
+  function renderSortHeader(label: string, key: FindingSortKey) {
+    const direction = sort?.key === key ? sort.direction : null;
+    const SortIcon = direction === "asc" ? ArrowUp : ArrowDown;
+
+    return (
+      <th
+        key={label}
+        aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}
+        className="px-4 py-3 font-semibold text-muted-foreground first:pl-5"
+      >
+        <button
+          type="button"
+          onClick={() => toggleSort(key)}
+          aria-label={`Sort by ${label}${
+            direction ? `, ${direction === "asc" ? "ascending" : "descending"}` : ""
+          }`}
+          className="inline-flex items-center gap-1.5 text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {label}
+          {direction && <SortIcon className="size-3" aria-hidden="true" />}
+        </button>
+      </th>
+    );
+  }
+
+  function renderHeader(label: string) {
+    return (
+      <th key={label} className="px-4 py-3 font-semibold text-muted-foreground first:pl-5">
+        {label}
+      </th>
+    );
+  }
   const hasActiveFilters =
     search !== "" ||
     Object.values(filters).some((value) => value !== "all") ||
@@ -230,11 +309,10 @@ function FindingsPage() {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b" style={{ borderColor: "oklch(0.90 0.006 250)" }}>
-                  {["Severity", "Classification", "Finding", "Status", "Source / detector", "Confidence", "Detected"].map((heading) => (
-                    <th key={heading} className="px-4 py-3 font-semibold text-muted-foreground first:pl-5">
-                      {heading}
-                    </th>
-                  ))}
+                  {renderSortHeader("Severity", "severity")}
+                  {["Classification", "Finding", "Status", "Source / detector"].map(renderHeader)}
+                  {renderSortHeader("Confidence", "confidence")}
+                  {renderSortHeader("Detected", "created_at")}
                   <th className="px-4 py-3 pr-5" />
                 </tr>
               </thead>
