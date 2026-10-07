@@ -30,6 +30,9 @@ type FindingFilterKey = "severity" | "classification" | "data_type" | "status" |
 type FindingSortKey = "created_at" | "severity" | "confidence";
 type SortDirection = "asc" | "desc";
 type FindingSort = { key: FindingSortKey; direction: SortDirection } | null;
+type FindingCursor = Pick<(typeof FINDING_FIXTURES)[number], "created_at" | "id">;
+
+const PAGE_SIZE = 10;
 
 const SEVERITY_ORDER: Record<(typeof FINDING_FIXTURES)[number]["severity"], number> = {
   low: 0,
@@ -75,6 +78,7 @@ function FindingsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<FindingSort>(null);
+  const [cursorHistory, setCursorHistory] = useState<(FindingCursor | null)[]>([null]);
   const filteredFindings = useMemo(() => {
     const query = search.trim().toLowerCase();
     return FINDING_FIXTURES.filter((finding) =>
@@ -126,7 +130,36 @@ function FindingsPage() {
     });
   }, [filteredFindings, sort]);
 
+  const cursor = cursorHistory[cursorHistory.length - 1];
+  const cursorIndex = cursor
+    ? findings.findIndex(
+        (finding) => finding.created_at === cursor.created_at && finding.id === cursor.id,
+      )
+    : -1;
+  const startIndex = cursorIndex < 0 ? 0 : cursorIndex + 1;
+  const pageFindings = findings.slice(startIndex, startIndex + PAGE_SIZE);
+  const hasPrevious = cursorHistory.length > 1;
+  const hasNext = startIndex + pageFindings.length < findings.length;
+
+  function resetCursor() {
+    setCursorHistory([null]);
+  }
+
+  function loadNext() {
+    const lastFinding = pageFindings[pageFindings.length - 1];
+    if (!lastFinding || !hasNext) return;
+    setCursorHistory((history) => [
+      ...history,
+      { created_at: lastFinding.created_at, id: lastFinding.id },
+    ]);
+  }
+
+  function loadPrevious() {
+    if (hasPrevious) setCursorHistory((history) => history.slice(0, -1));
+  }
+
   function toggleSort(key: FindingSortKey) {
+    resetCursor();
     setSort((current) => ({
       key,
       direction: current?.key === key && current.direction === "asc" ? "desc" : "asc",
@@ -172,6 +205,7 @@ function FindingsPage() {
     dateTo !== "";
 
   function clearFilters() {
+    resetCursor();
     setSearch("");
     setFilters({
       severity: "all",
@@ -215,7 +249,10 @@ function FindingsPage() {
               />
               <Input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  resetCursor();
+                  setSearch(event.target.value);
+                }}
                 placeholder="Search findings..."
                 aria-label="Search findings"
                 className="h-10 border-white/70 bg-white/60 pl-9"
@@ -233,9 +270,10 @@ function FindingsPage() {
                 <select
                   aria-label={label}
                   value={filters[key]}
-                  onChange={(event) =>
-                    setFilters((current) => ({ ...current, [key]: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    resetCursor();
+                    setFilters((current) => ({ ...current, [key]: event.target.value }));
+                  }}
                   className="h-9 w-full rounded-md border border-input bg-white/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="all">All {label.toLowerCase()}</option>
@@ -254,7 +292,10 @@ function FindingsPage() {
                 type="date"
                 value={dateFrom}
                 max={dateTo || undefined}
-                onChange={(event) => setDateFrom(event.target.value)}
+                onChange={(event) => {
+                  resetCursor();
+                  setDateFrom(event.target.value);
+                }}
                 className="h-9 w-full rounded-md border border-input bg-white/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </label>
@@ -265,7 +306,10 @@ function FindingsPage() {
                 type="date"
                 value={dateTo}
                 min={dateFrom || undefined}
-                onChange={(event) => setDateTo(event.target.value)}
+                onChange={(event) => {
+                  resetCursor();
+                  setDateTo(event.target.value);
+                }}
                 className="h-9 w-full rounded-md border border-input bg-white/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
               />
             </label>
@@ -300,7 +344,7 @@ function FindingsPage() {
                 Finding queue
               </h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {findings.length} {findings.length === 1 ? "finding" : "findings"}
+                Showing {pageFindings.length} of {findings.length} matching findings
               </p>
             </div>
           </div>
@@ -317,7 +361,7 @@ function FindingsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ borderColor: "oklch(0.92 0.005 250)" }}>
-                {findings.map((finding) => (
+                {pageFindings.map((finding) => (
                   <tr key={finding.id} className="transition-colors hover:bg-white/45">
                     <td className="whitespace-nowrap px-4 py-4 pl-5">
                       <SeverityBadge severity={finding.severity} />
@@ -343,7 +387,7 @@ function FindingsPage() {
                     <td className="px-4 py-4 pr-5" />
                   </tr>
                 ))}
-                {findings.length === 0 && (
+                {pageFindings.length === 0 && (
                   <tr>
                     <td colSpan={8} className="px-5 py-14 text-center text-sm text-muted-foreground">
                       No findings match your search.
@@ -355,7 +399,7 @@ function FindingsPage() {
           </div>
 
           <div className="space-y-3 p-4 lg:hidden">
-            {findings.map((finding) => (
+            {pageFindings.map((finding) => (
               <article key={finding.id} className="rounded-xl border border-border/70 bg-white/45 p-4 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <SeverityBadge severity={finding.severity} />
@@ -385,11 +429,29 @@ function FindingsPage() {
                 </div>
               </article>
             ))}
-            {findings.length === 0 && (
+            {pageFindings.length === 0 && (
               <p className="py-12 text-center text-sm text-muted-foreground">
                 No findings match your search.
               </p>
             )}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: "oklch(0.90 0.006 250)" }}>
+            <button
+              type="button"
+              onClick={loadPrevious}
+              disabled={!hasPrevious}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={loadNext}
+              disabled={!hasNext}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
           </div>
         </section>
       </main>
