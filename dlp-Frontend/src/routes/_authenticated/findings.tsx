@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Search, SlidersHorizontal } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Search, SlidersHorizontal } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { ClassificationChip } from "@/components/classification-chip";
@@ -72,6 +72,44 @@ const STATUS_STYLES: Record<FindingStatus, string> = {
   accepted: "border-violet-500/30 bg-violet-500/10 text-violet-700",
   false_positive: "border-border bg-muted text-muted-foreground",
 };
+
+function downloadFindingsCsv(findings: FindingRecord[]) {
+  const columns = [
+    "ID",
+    "Severity",
+    "Classification",
+    "Data Type",
+    "Status",
+    "Source",
+    "Detector",
+    "Confidence",
+    "Created At",
+  ] as const;
+  const escapeCsvValue = (value: string | number) =>
+    `"${String(value).replace(/"/g, '""')}"`;
+  const rows = findings.map((finding) =>
+    [
+      finding.id,
+      finding.severity,
+      finding.classification,
+      finding.data_type,
+      finding.status,
+      finding.source,
+      finding.detector,
+      finding.confidence,
+      finding.created_at,
+    ]
+      .map(escapeCsvValue)
+      .join(","),
+  );
+  const csv = [columns.map(escapeCsvValue).join(","), ...rows].join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "findings.csv";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 function FindingsPage() {
   const [findingRecords, setFindingRecords] = useState<FindingRecord[]>(() =>
@@ -407,6 +445,14 @@ function FindingsPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => downloadFindingsCsv(findings)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-white/65 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-white"
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                Export CSV
+              </button>
               <label className="mr-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <input
                   type="checkbox"
