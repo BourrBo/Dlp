@@ -31,6 +31,7 @@ export const Route = createFileRoute("/_authenticated/findings")({
 });
 
 type FindingStatus = (typeof FINDING_FIXTURES)[number]["status"];
+type FindingRecord = (typeof FINDING_FIXTURES)[number] & { owner: string; notes: string };
 
 type FindingFilterKey = "severity" | "classification" | "data_type" | "status" | "source" | "detector";
 type FindingSortKey = "created_at" | "severity" | "confidence";
@@ -39,6 +40,7 @@ type FindingSort = { key: FindingSortKey; direction: SortDirection } | null;
 type FindingCursor = Pick<(typeof FINDING_FIXTURES)[number], "created_at" | "id">;
 
 const PAGE_SIZE = 10;
+const STATUS_OPTIONS: FindingStatus[] = ["open", "triaged", "fixed", "accepted", "false_positive"];
 
 const SEVERITY_ORDER: Record<(typeof FINDING_FIXTURES)[number]["severity"], number> = {
   low: 0,
@@ -72,6 +74,9 @@ const STATUS_STYLES: Record<FindingStatus, string> = {
 };
 
 function FindingsPage() {
+  const [findingRecords, setFindingRecords] = useState<FindingRecord[]>(() =>
+    FINDING_FIXTURES.map((finding) => ({ ...finding, owner: "", notes: "" })),
+  );
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Record<FindingFilterKey, string>>({
     severity: "all",
@@ -85,12 +90,11 @@ function FindingsPage() {
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<FindingSort>(null);
   const [cursorHistory, setCursorHistory] = useState<(FindingCursor | null)[]>([null]);
-  const [selectedFinding, setSelectedFinding] = useState<(typeof FINDING_FIXTURES)[number] | null>(
-    null,
-  );
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const selectedFinding = findingRecords.find((finding) => finding.id === selectedFindingId);
   const filteredFindings = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return FINDING_FIXTURES.filter((finding) =>
+    return findingRecords.filter((finding) =>
       (filters.severity === "all" || finding.severity === filters.severity) &&
       (filters.classification === "all" || finding.classification === filters.classification) &&
       (filters.data_type === "all" || finding.data_type === filters.data_type) &&
@@ -109,7 +113,7 @@ function FindingsPage() {
           finding.detector,
         ].some((value) => value.toLowerCase().includes(query))),
     );
-  }, [dateFrom, dateTo, filters, search]);
+  }, [dateFrom, dateTo, filters, findingRecords, search]);
   const findings = useMemo(() => {
     if (!sort) return filteredFindings;
 
@@ -231,9 +235,9 @@ function FindingsPage() {
   return (
     <AppShell>
       <Sheet
-        open={selectedFinding !== null}
+        open={Boolean(selectedFinding)}
         onOpenChange={(open) => {
-          if (!open) setSelectedFinding(null);
+          if (!open) setSelectedFindingId(null);
         }}
       >
       <main className="space-y-6 px-6 py-6" style={{ minHeight: "calc(100vh - 56px)" }}>
@@ -382,11 +386,11 @@ function FindingsPage() {
                     tabIndex={0}
                     role="button"
                     aria-label={`View finding ${finding.id}`}
-                    onClick={() => setSelectedFinding(finding)}
+                    onClick={() => setSelectedFindingId(finding.id)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        setSelectedFinding(finding);
+                        setSelectedFindingId(finding.id);
                       }
                     }}
                     className="cursor-pointer transition-colors hover:bg-white/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -433,11 +437,11 @@ function FindingsPage() {
                 tabIndex={0}
                 role="button"
                 aria-label={`View finding ${finding.id}`}
-                onClick={() => setSelectedFinding(finding)}
+                onClick={() => setSelectedFindingId(finding.id)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    setSelectedFinding(finding);
+                    setSelectedFindingId(finding.id);
                   }
                 }}
                 className="cursor-pointer rounded-xl border border-border/70 bg-white/45 p-4 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -550,6 +554,66 @@ function FindingsPage() {
                   </div>
                 ))}
               </dl>
+            </section>
+            <section className="space-y-4 rounded-xl border border-border/70 bg-white/65 p-4">
+              <label className="block">
+                <span className="text-xs font-semibold text-foreground">Change status</span>
+                <select
+                  aria-label="Change finding status"
+                  value={selectedFinding.status}
+                  onChange={(event) => {
+                    const status = STATUS_OPTIONS.find((option) => option === event.target.value);
+                    if (!status) return;
+                    setFindingRecords((records) =>
+                      records.map((finding) =>
+                        finding.id === selectedFinding.id ? { ...finding, status } : finding,
+                      ),
+                    );
+                  }}
+                  className="mt-2 h-10 w-full rounded-md border border-input bg-white px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {status.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-foreground">Owner</span>
+                <Input
+                  value={selectedFinding.owner}
+                  onChange={(event) => {
+                    const owner = event.target.value;
+                    setFindingRecords((records) =>
+                      records.map((finding) =>
+                        finding.id === selectedFinding.id ? { ...finding, owner } : finding,
+                      ),
+                    );
+                  }}
+                  placeholder="Assign an owner"
+                  aria-label="Finding owner"
+                  className="mt-2 border-white/70 bg-white/80"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-foreground">Notes</span>
+                <textarea
+                  value={selectedFinding.notes}
+                  onChange={(event) => {
+                    const notes = event.target.value;
+                    setFindingRecords((records) =>
+                      records.map((finding) =>
+                        finding.id === selectedFinding.id ? { ...finding, notes } : finding,
+                      ),
+                    );
+                  }}
+                  placeholder="Add investigation notes"
+                  aria-label="Finding notes"
+                  rows={4}
+                  className="mt-2 w-full resize-y rounded-md border border-input bg-white/80 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </label>
             </section>
             <section className="rounded-xl border border-border/70 bg-white/65 p-4">
               <h3 className="text-xs font-semibold text-muted-foreground">Masked evidence</h3>
