@@ -90,6 +90,7 @@ function FindingsPage() {
   const [dateTo, setDateTo] = useState("");
   const [sort, setSort] = useState<FindingSort>(null);
   const [cursorHistory, setCursorHistory] = useState<(FindingCursor | null)[]>([null]);
+  const [selectedFindingIds, setSelectedFindingIds] = useState<Set<string>>(() => new Set());
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const selectedFinding = findingRecords.find((finding) => finding.id === selectedFindingId);
   const filteredFindings = useMemo(() => {
@@ -151,6 +152,12 @@ function FindingsPage() {
     : -1;
   const startIndex = cursorIndex < 0 ? 0 : cursorIndex + 1;
   const pageFindings = findings.slice(startIndex, startIndex + PAGE_SIZE);
+  const selectedVisibleIds = pageFindings
+    .filter((finding) => selectedFindingIds.has(finding.id))
+    .map((finding) => finding.id);
+  const allVisibleSelected =
+    pageFindings.length > 0 && selectedVisibleIds.length === pageFindings.length;
+  const someVisibleSelected = selectedVisibleIds.length > 0 && !allVisibleSelected;
   const hasPrevious = cursorHistory.length > 1;
   const hasNext = startIndex + pageFindings.length < findings.length;
 
@@ -169,6 +176,39 @@ function FindingsPage() {
 
   function loadPrevious() {
     if (hasPrevious) setCursorHistory((history) => history.slice(0, -1));
+  }
+
+  function toggleFindingSelection(id: string, checked: boolean) {
+    setSelectedFindingIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function togglePageSelection(checked: boolean) {
+    setSelectedFindingIds((current) => {
+      const next = new Set(current);
+      for (const finding of pageFindings) {
+        if (checked) next.add(finding.id);
+        else next.delete(finding.id);
+      }
+      return next;
+    });
+  }
+
+  function applyBulkStatus(status: Exclude<FindingStatus, "open">) {
+    const ids = new Set(selectedVisibleIds);
+    if (ids.size === 0) return;
+
+    const label = status.replace(/_/g, " ");
+    if (!window.confirm(`Set ${ids.size} selected visible finding(s) to "${label}"?`)) return;
+
+    setFindingRecords((records) =>
+      records.map((finding) => (ids.has(finding.id) ? { ...finding, status } : finding)),
+    );
+    setSelectedFindingIds(new Set());
   }
 
   function toggleSort(key: FindingSortKey) {
@@ -357,7 +397,7 @@ function FindingsPage() {
             boxShadow: "0 4px 12px oklch(0 0 0 / 0.045), 0 10px 28px oklch(0 0 0 / 0.025)",
           }}
         >
-          <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "oklch(0.90 0.006 250)" }}>
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b px-5 py-4" style={{ borderColor: "oklch(0.90 0.006 250)" }}>
             <div>
               <h2 className="text-sm font-semibold" style={{ color: "oklch(0.18 0.015 250)" }}>
                 Finding queue
@@ -366,12 +406,50 @@ function FindingsPage() {
                 Showing {pageFindings.length} of {findings.length} matching findings
               </p>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="mr-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  aria-label="Select all findings on this page"
+                  aria-checked={someVisibleSelected ? "mixed" : allVisibleSelected}
+                  checked={allVisibleSelected}
+                  ref={(element) => {
+                    if (element) element.indeterminate = someVisibleSelected;
+                  }}
+                  onChange={(event) => togglePageSelection(event.target.checked)}
+                  className="size-4 accent-primary"
+                />
+                Select page
+              </label>
+              <span className="mr-1 text-xs text-muted-foreground" aria-live="polite">
+                {selectedVisibleIds.length} selected
+              </span>
+              {(
+                [
+                  ["triaged", "Triaged"],
+                  ["fixed", "Fixed"],
+                  ["accepted", "Accepted"],
+                  ["false_positive", "False positive"],
+                ] as const
+              ).map(([status, label]) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => applyBulkStatus(status)}
+                  disabled={selectedVisibleIds.length === 0}
+                  className="rounded-md border border-border/70 bg-white/65 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="hidden overflow-x-auto lg:block">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b" style={{ borderColor: "oklch(0.90 0.006 250)" }}>
+                  <th className="px-3 py-3" aria-label="Selection" />
                   {renderSortHeader("Severity", "severity")}
                   {["Classification", "Finding", "Status", "Source / detector"].map(renderHeader)}
                   {renderSortHeader("Confidence", "confidence")}
@@ -395,6 +473,19 @@ function FindingsPage() {
                     }}
                     className="cursor-pointer transition-colors hover:bg-white/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
+                    <td className="px-3 py-4">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select finding ${finding.id}`}
+                        checked={selectedFindingIds.has(finding.id)}
+                        onChange={(event) =>
+                          toggleFindingSelection(finding.id, event.target.checked)
+                        }
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        className="size-4 accent-primary"
+                      />
+                    </td>
                     <td className="whitespace-nowrap px-4 py-4 pl-5">
                       <SeverityBadge severity={finding.severity} />
                     </td>
@@ -421,7 +512,7 @@ function FindingsPage() {
                 ))}
                 {pageFindings.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-5 py-14 text-center text-sm text-muted-foreground">
+                    <td colSpan={9} className="px-5 py-14 text-center text-sm text-muted-foreground">
                       No findings match your search.
                     </td>
                   </tr>
@@ -446,6 +537,22 @@ function FindingsPage() {
                 }}
                 className="cursor-pointer rounded-xl border border-border/70 bg-white/45 p-4 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
+                <label
+                  className="mb-3 inline-flex items-center gap-2 text-xs text-muted-foreground"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`Select finding ${finding.id}`}
+                    checked={selectedFindingIds.has(finding.id)}
+                    onChange={(event) =>
+                      toggleFindingSelection(finding.id, event.target.checked)
+                    }
+                    onKeyDown={(event) => event.stopPropagation()}
+                    className="size-4 accent-primary"
+                  />
+                  Select finding
+                </label>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <SeverityBadge severity={finding.severity} />
                   <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-medium ${STATUS_STYLES[finding.status]}`}>
