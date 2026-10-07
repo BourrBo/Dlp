@@ -73,7 +73,7 @@ const STATUS_STYLES: Record<FindingStatus, string> = {
   false_positive: "border-border bg-muted text-muted-foreground",
 };
 
-function downloadFindingsCsv(findings: FindingRecord[]) {
+function downloadFindingsCsv(findings: FindingRecord[], format: "csv" | "secureflow" = "csv") {
   const columns = [
     "ID",
     "Severity",
@@ -106,7 +106,7 @@ function downloadFindingsCsv(findings: FindingRecord[]) {
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = "findings.csv";
+  link.download = format === "secureflow" ? "findings-secureflow.csv" : "findings.csv";
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
@@ -447,7 +447,14 @@ function FindingsPage() {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => downloadFindingsCsv(findings)}
+                onClick={() =>
+                  downloadFindingsCsv(
+                    findings,
+                    new URLSearchParams(window.location.search).get("format") === "secureflow"
+                      ? "secureflow"
+                      : "csv",
+                  )
+                }
                 className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-white/65 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-white"
               >
                 <Download className="size-3.5" aria-hidden="true" />
