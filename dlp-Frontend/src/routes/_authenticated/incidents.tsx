@@ -15,6 +15,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { INCIDENT_FIXTURES, type Incident } from "@/lib/fixtures/incidents";
 import type { FindingStatus } from "@/lib/fixtures/findings";
+import { supabase } from "@/integrations/supabase/client";
+import { API_BASE_URL, FIXTURE_MODE } from "@/lib/env";
 
 export const Route = createFileRoute("/_authenticated/incidents")({
   head: () => ({
@@ -30,12 +32,60 @@ type SortKey = "severity" | "status" | "first_seen" | "last_seen";
 type SortState = { key: SortKey; direction: "asc" | "desc" };
 
 const STATUS_OPTIONS: FindingStatus[] = ["open", "triaged", "fixed", "accepted", "false_positive"];
+const INCIDENT_STATUSES = new Set<string>(STATUS_OPTIONS);
 const SEVERITY_ORDER: Record<string, number> = {
   low: 0,
   medium: 1,
   high: 2,
   critical: 3,
 };
+
+function normalizeIncident(value: unknown): Incident {
+  if (!value || typeof value !== "object") {
+    throw new Error("The incidents API returned an invalid incident.");
+  }
+
+  const row = value as Record<string, unknown>;
+  const requiredFields = [
+    "id",
+    "org_id",
+    "number",
+    "title",
+    "severity",
+    "source",
+    "data_type",
+    "first_seen",
+    "last_seen",
+    "created_at",
+    "updated_at",
+  ];
+  if (
+    requiredFields.some((field) => typeof row[field] !== "string") ||
+    typeof row.status !== "string" ||
+    !INCIDENT_STATUSES.has(row.status) ||
+    (row.assignee !== null && typeof row.assignee !== "string") ||
+    (row.policy_id !== null && typeof row.policy_id !== "string")
+  ) {
+    throw new Error("The incidents API returned an invalid incident.");
+  }
+
+  return {
+    id: row.id as string,
+    org_id: row.org_id as string,
+    number: row.number as string,
+    title: row.title as string,
+    severity: row.severity as string,
+    status: row.status as FindingStatus,
+    assignee: row.assignee as string | null,
+    source: row.source as string,
+    policy_id: row.policy_id as string | null,
+    data_type: row.data_type as string,
+    first_seen: row.first_seen as string,
+    last_seen: row.last_seen as string,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -65,16 +115,52 @@ function IncidentsPage() {
   useEffect(() => {
     let active = true;
 
-    async function loadFixtures() {
+    async function loadIncidents() {
       setLoading(true);
       setError(null);
       try {
-        const records = await Promise.resolve(INCIDENT_FIXTURES);
+        if (FIXTURE_MODE) {
+          if (active) setIncidents(INCIDENT_FIXTURES);
+          return;
+        }
+
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        const accessToken = data.session?.access_token;
+        if (!accessToken) throw new Error("Your session has expired. Sign in and try again.");
+
+        const response = await fetch(
+          `${API_BASE_URL.replace(/\/+$/, "")}/api/v1/incidents`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (!response.ok) {
+          let message = `Request failed (${response.status}).`;
+          try {
+            const body: unknown = await response.json();
+            if (
+              body &&
+              typeof body === "object" &&
+              "detail" in body &&
+              typeof body.detail === "string"
+            ) {
+              message = body.detail;
+            }
+          } catch {
+            // Keep the HTTP status message when the response has no JSON body.
+          }
+          throw new Error(message);
+        }
+
+        const body: unknown = await response.json();
+        if (!Array.isArray(body)) {
+          throw new Error("The incidents API returned an invalid response.");
+        }
+        const records = body.map(normalizeIncident);
         if (active) setIncidents(records);
       } catch (loadError) {
         if (active) {
           setError(
-            loadError instanceof Error ? loadError.message : "Unable to load incident fixtures.",
+            loadError instanceof Error ? loadError.message : "Unable to load incidents.",
           );
         }
       } finally {
@@ -82,7 +168,7 @@ function IncidentsPage() {
       }
     }
 
-    void loadFixtures();
+    void loadIncidents();
     return () => {
       active = false;
     };
