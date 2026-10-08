@@ -17,12 +17,14 @@ class _RestResult:
 class _RestQuery:
     """Small PostgREST query adapter for the teammate detection/channel services."""
 
-    def __init__(self, table: str):
+    def __init__(self, table: str, access_token: str | None = None):
         if not re.fullmatch(r"[a-z][a-z0-9_]*", table):
             raise ValueError("Invalid Supabase table name")
         self.table = table
+        self.access_token = access_token
         self.params: dict[str, str] = {}
         self.body: dict[str, Any] | list[dict[str, Any]] | None = None
+        self.method = "GET"
 
     def select(self, columns: str = "*") -> "_RestQuery":
         self.params["select"] = columns
@@ -46,28 +48,48 @@ class _RestQuery:
 
     def insert(self, values: dict[str, Any] | list[dict[str, Any]]) -> "_RestQuery":
         self.body = values
+        self.method = "POST"
+        return self
+
+    def update(self, values: dict[str, Any]) -> "_RestQuery":
+        self.body = values
+        self.method = "PATCH"
         return self
 
     def execute(self) -> _RestResult:
         url = f"{_base_url()}/rest/v1/{self.table}"
-        if self.body is None:
-            response = httpx.get(url, params=self.params, headers=_headers(), timeout=10.0)
-        else:
+        headers = _headers(prefer="return=representation" if self.body is not None else None)
+        if self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+        if self.method == "POST":
             response = httpx.post(
                 url,
                 params=self.params,
                 json=self.body,
-                headers=_headers(prefer="return=representation"),
+                headers=headers,
                 timeout=10.0,
             )
+        elif self.method == "PATCH":
+            response = httpx.patch(
+                url,
+                params=self.params,
+                json=self.body,
+                headers=headers,
+                timeout=10.0,
+            )
+        else:
+            response = httpx.get(url, params=self.params, headers=headers, timeout=10.0)
         response.raise_for_status()
         rows = response.json() if response.content else []
         return _RestResult(data=rows if isinstance(rows, list) else [rows])
 
 
 class _RestClient:
+    def __init__(self, access_token: str | None = None):
+        self.access_token = access_token
+
     def table(self, table: str) -> _RestQuery:
-        return _RestQuery(table)
+        return _RestQuery(table, access_token=self.access_token)
 
 
 @lru_cache(maxsize=1)
@@ -75,6 +97,12 @@ def get_supabase() -> _RestClient:
     """Return a server-only PostgREST adapter using the configured service key."""
     _base_url()  # Fail early with the standard missing-configuration message.
     return _RestClient()
+
+
+def get_authenticated_supabase(access_token: str) -> _RestClient:
+    """Return a Data API client that evaluates RLS as the authenticated user."""
+    _base_url()
+    return _RestClient(access_token=access_token)
 
 
 def _base_url() -> str:

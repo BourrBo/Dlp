@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.routers import channels, classifications, detect, events, overview, policy
+from app.routers import channels, classifications, detect, events, incidents, overview, policy
 
 settings = get_settings()
 
@@ -18,6 +18,7 @@ app.add_middleware(
 
 app.include_router(detect.router)
 app.include_router(events.router)
+app.include_router(incidents.router)
 app.include_router(overview.router)
 app.include_router(policy.router)
 app.include_router(channels.router)
