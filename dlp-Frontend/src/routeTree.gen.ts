@@ -17,7 +17,9 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedEventsRouteImport } from './routes/_authenticated/events'
 import { Route as AuthenticatedExceptionsRouteImport } from './routes/_authenticated/exceptions'
 import { Route as AuthenticatedFindingsRouteImport } from './routes/_authenticated/findings'
+import { Route as AuthenticatedIncidentsRouteImport } from './routes/_authenticated/incidents'
 import { Route as AuthenticatedPoliciesRouteImport } from './routes/_authenticated/policies'
+import { Route as AuthenticatedIncidentsIncidentIdRouteImport } from './routes/_authenticated/incidents.$incidentId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,11 +60,22 @@ const AuthenticatedFindingsRoute = AuthenticatedFindingsRouteImport.update({
   path: '/findings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedIncidentsRoute = AuthenticatedIncidentsRouteImport.update({
+  id: '/incidents',
+  path: '/incidents',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedPoliciesRoute = AuthenticatedPoliciesRouteImport.update({
   id: '/policies',
   path: '/policies',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedIncidentsIncidentIdRoute =
+  AuthenticatedIncidentsIncidentIdRouteImport.update({
+    id: '/$incidentId',
+    path: '/$incidentId',
+    getParentRoute: () => AuthenticatedIncidentsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -72,7 +85,9 @@ export interface FileRoutesByFullPath {
   '/events': typeof AuthenticatedEventsRoute
   '/exceptions': typeof AuthenticatedExceptionsRoute
   '/findings': typeof AuthenticatedFindingsRoute
+  '/incidents': typeof AuthenticatedIncidentsRouteWithChildren
   '/policies': typeof AuthenticatedPoliciesRoute
+  '/incidents/$incidentId': typeof AuthenticatedIncidentsIncidentIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -82,7 +97,9 @@ export interface FileRoutesByTo {
   '/events': typeof AuthenticatedEventsRoute
   '/exceptions': typeof AuthenticatedExceptionsRoute
   '/findings': typeof AuthenticatedFindingsRoute
+  '/incidents': typeof AuthenticatedIncidentsRouteWithChildren
   '/policies': typeof AuthenticatedPoliciesRoute
+  '/incidents/$incidentId': typeof AuthenticatedIncidentsIncidentIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,7 +111,9 @@ export interface FileRoutesById {
   '/_authenticated/events': typeof AuthenticatedEventsRoute
   '/_authenticated/exceptions': typeof AuthenticatedExceptionsRoute
   '/_authenticated/findings': typeof AuthenticatedFindingsRoute
+  '/_authenticated/incidents': typeof AuthenticatedIncidentsRouteWithChildren
   '/_authenticated/policies': typeof AuthenticatedPoliciesRoute
+  '/_authenticated/incidents/$incidentId': typeof AuthenticatedIncidentsIncidentIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -106,7 +125,9 @@ export interface FileRouteTypes {
     | '/events'
     | '/exceptions'
     | '/findings'
+    | '/incidents'
     | '/policies'
+    | '/incidents/$incidentId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -116,7 +137,9 @@ export interface FileRouteTypes {
     | '/events'
     | '/exceptions'
     | '/findings'
+    | '/incidents'
     | '/policies'
+    | '/incidents/$incidentId'
   id:
     | '__root__'
     | '/'
@@ -127,7 +150,9 @@ export interface FileRouteTypes {
     | '/_authenticated/events'
     | '/_authenticated/exceptions'
     | '/_authenticated/findings'
+    | '/_authenticated/incidents'
     | '/_authenticated/policies'
+    | '/_authenticated/incidents/$incidentId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -195,6 +220,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFindingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/incidents': {
+      id: '/_authenticated/incidents'
+      path: '/incidents'
+      fullPath: '/incidents'
+      preLoaderRoute: typeof AuthenticatedIncidentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/policies': {
       id: '/_authenticated/policies'
       path: '/policies'
@@ -202,14 +234,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPoliciesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/incidents/$incidentId': {
+      id: '/_authenticated/incidents/$incidentId'
+      path: '/$incidentId'
+      fullPath: '/incidents/$incidentId'
+      preLoaderRoute: typeof AuthenticatedIncidentsIncidentIdRouteImport
+      parentRoute: typeof AuthenticatedIncidentsRoute
+    }
   }
 }
+
+interface AuthenticatedIncidentsRouteChildren {
+  AuthenticatedIncidentsIncidentIdRoute: typeof AuthenticatedIncidentsIncidentIdRoute
+}
+
+const AuthenticatedIncidentsRouteChildren: AuthenticatedIncidentsRouteChildren =
+  {
+    AuthenticatedIncidentsIncidentIdRoute:
+      AuthenticatedIncidentsIncidentIdRoute,
+  }
+
+const AuthenticatedIncidentsRouteWithChildren =
+  AuthenticatedIncidentsRoute._addFileChildren(
+    AuthenticatedIncidentsRouteChildren,
+  )
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEventsRoute: typeof AuthenticatedEventsRoute
   AuthenticatedExceptionsRoute: typeof AuthenticatedExceptionsRoute
   AuthenticatedFindingsRoute: typeof AuthenticatedFindingsRoute
+  AuthenticatedIncidentsRoute: typeof AuthenticatedIncidentsRouteWithChildren
   AuthenticatedPoliciesRoute: typeof AuthenticatedPoliciesRoute
 }
 
@@ -218,6 +273,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedEventsRoute: AuthenticatedEventsRoute,
   AuthenticatedExceptionsRoute: AuthenticatedExceptionsRoute,
   AuthenticatedFindingsRoute: AuthenticatedFindingsRoute,
+  AuthenticatedIncidentsRoute: AuthenticatedIncidentsRouteWithChildren,
   AuthenticatedPoliciesRoute: AuthenticatedPoliciesRoute,
 }
 
