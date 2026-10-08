@@ -1,18 +1,26 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
 import { SeverityBadge } from "@/components/severity-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import type { FindingStatus } from "@/lib/fixtures/findings";
 import {
   INCIDENT_EVENT_FIXTURES,
   INCIDENT_FIXTURES,
+  type IncidentEvent,
   type Incident,
 } from "@/lib/fixtures/incidents";
 
 export const Route = createFileRoute("/_authenticated/incidents/$incidentId")({
   component: IncidentDetailPage,
 });
+
+const STATUS_OPTIONS: FindingStatus[] = ["open", "triaged", "fixed", "accepted", "false_positive"];
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -24,15 +32,69 @@ function formatDate(value: string) {
 function IncidentDetailPage() {
   const { incidentId } = Route.useParams();
   const [incident, setIncident] = useState<Incident | null>(null);
+  const [events, setEvents] = useState<IncidentEvent[]>([]);
+  const [assignee, setAssignee] = useState("");
+  const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fixture = INCIDENT_FIXTURES.find((item) => item.id === incidentId) ?? null;
     setIncident(fixture);
+    setAssignee(fixture?.assignee ?? "");
+    setEvents(INCIDENT_EVENT_FIXTURES.filter((event) => event.incident_id === incidentId));
     setLoading(false);
   }, [incidentId]);
 
-  const events = INCIDENT_EVENT_FIXTURES.filter((event) => event.incident_id === incidentId)
+  function appendEvent(eventType: string, eventComment: string) {
+    if (!incident) return;
+    const createdAt = new Date().toISOString();
+    const event: IncidentEvent = {
+      id: crypto.randomUUID(),
+      incident_id: incident.id,
+      org_id: incident.org_id,
+      event_type: eventType,
+      actor: "You",
+      comment: eventComment,
+      created_at: createdAt,
+    };
+    setEvents((current) =>
+      [...current, event].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    );
+    setIncident((current) => (current ? { ...current, updated_at: createdAt } : current));
+  }
+
+  function changeStatus(status: FindingStatus) {
+    if (!incident || incident.status === status) return;
+    setIncident((current) => (current ? { ...current, status } : current));
+    appendEvent("status_changed", `Status changed to ${status.replace(/_/g, " ")}.`);
+    toast.success("Incident status updated");
+  }
+
+  function saveAssignee(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!incident) return;
+    const nextAssignee = assignee.trim();
+    if ((incident.assignee ?? "") === nextAssignee) {
+      return;
+    }
+    setIncident((current) => (current ? { ...current, assignee: nextAssignee || null } : current));
+    appendEvent("assigned", nextAssignee ? `Assigned to ${nextAssignee}.` : "Incident unassigned.");
+    toast.success(nextAssignee ? "Incident assigned" : "Incident unassigned");
+  }
+
+  function addComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = comment.trim();
+    if (!text) {
+      toast.error("Enter a comment before adding it.");
+      return;
+    }
+    appendEvent("comment_added", text);
+    setComment("");
+    toast.success("Comment added to timeline");
+  }
+
+  const sortedEvents = events
     .slice()
     .sort((left, right) => left.created_at.localeCompare(right.created_at));
 
@@ -71,6 +133,61 @@ function IncidentDetailPage() {
 
             <Card>
               <CardHeader>
+                <CardTitle>Manage incident</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-6 sm:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium">Status</span>
+                  <select
+                    aria-label="Incident status"
+                    value={incident.status}
+                    onChange={(event) => {
+                      const selected = STATUS_OPTIONS.find(
+                        (status) => status === event.target.value,
+                      );
+                      if (selected) changeStatus(selected);
+                    }}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <form className="space-y-2" onSubmit={saveAssignee}>
+                  <label htmlFor="incident-assignee" className="text-sm font-medium">
+                    Assignee
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="incident-assignee"
+                      value={assignee}
+                      onChange={(event) => setAssignee(event.target.value)}
+                      placeholder="Name or leave blank to unassign"
+                    />
+                    <Button type="submit">Save</Button>
+                  </div>
+                </form>
+                <form className="space-y-2 sm:col-span-2" onSubmit={addComment}>
+                  <label htmlFor="incident-comment" className="text-sm font-medium">
+                    Add comment
+                  </label>
+                  <Textarea
+                    id="incident-comment"
+                    value={comment}
+                    onChange={(event) => setComment(event.target.value)}
+                    placeholder="Write a timeline comment..."
+                    rows={3}
+                  />
+                  <Button type="submit">Add comment</Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle>Incident details</CardTitle>
               </CardHeader>
               <CardContent>
@@ -103,13 +220,13 @@ function IncidentDetailPage() {
                 <CardTitle>Timeline</CardTitle>
               </CardHeader>
               <CardContent>
-                {events.length === 0 ? (
+                {sortedEvents.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No timeline events are available for this incident.
                   </p>
                 ) : (
                   <ol className="space-y-5">
-                    {events.map((event) => (
+                    {sortedEvents.map((event) => (
                       <li key={event.id} className="border-l-2 border-border pl-4">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <p className="text-sm font-semibold capitalize">
