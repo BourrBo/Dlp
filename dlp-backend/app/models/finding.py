@@ -50,7 +50,7 @@ class Finding(BaseModel):
 
 class ScanRequest(BaseModel):
     org_id: UUID
-    user_id: UUID
+    user_id: Optional[UUID] = None
     channel: Channel
     destination: str  # domain, email address, or share target
     content: str  # raw text extracted from the file/paste/attachment being scanned

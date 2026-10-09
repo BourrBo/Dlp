@@ -30,11 +30,21 @@ function insertTextAtCursor(el, text) {
 
 function requestScan(payload) {
   return new Promise((resolve) => {
-    const inactive = (reason) => resolve({ decision: "allow", findings: [], reason, inactive: true });
+    const inactive = (reason) => resolve({ decision: "block", findings: [], reason, inactive: true });
     try {
       chrome.runtime.sendMessage({ type: "DLP_SCAN", payload }, (response) => {
         if (chrome.runtime.lastError || !response) {
           inactive(chrome.runtime.lastError?.message ?? "No response from extension");
+          return;
+        }
+        if (
+          !Array.isArray(response.findings) ||
+          !["allow", "warn", "block", "log"].includes(response.decision) ||
+          typeof response.reason !== "string" ||
+          !Object.hasOwn(response, "matched_policy_id") ||
+          (response.matched_policy_id !== null && typeof response.matched_policy_id !== "string")
+        ) {
+          inactive("Invalid scan result");
           return;
         }
         resolve(response);

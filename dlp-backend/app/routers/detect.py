@@ -1,7 +1,10 @@
-from fastapi import APIRouter
 import logging
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
 
 from app import database
+from app.auth import AuthenticatedPrincipal, get_current_principal, require_org_membership
 from app.models.finding import DlpEvent, ScanRequest, ScanResult
 from app.services import policy_engine
 from app.services.person_b import detection_service
@@ -9,15 +12,18 @@ from app.services.alert_service import send_alert
 
 router = APIRouter(prefix="/api/scan", tags=["scan"])
 logger = logging.getLogger(__name__)
+Principal = Annotated[AuthenticatedPrincipal, Depends(get_current_principal)]
 
 
 @router.post("", response_model=ScanResult)
-def scan(request: ScanRequest) -> ScanResult:
+def scan(request: ScanRequest, principal: Principal) -> ScanResult:
     """
     The single entry point every channel (extension, email watcher, Drive
     webhook) calls. This is the Phase-1 wire-up: detection -> policy ->
     persisted event. Channels only need to build a ScanRequest and POST here.
     """
+    require_org_membership(principal, request.org_id)
+
     findings = detection_service.detect(
         request.content, org_id=request.org_id, filename=request.filename
     )
@@ -26,7 +32,7 @@ def scan(request: ScanRequest) -> ScanResult:
     top_finding = findings[0] if findings else None
     event = DlpEvent(
         org_id=request.org_id,
-        user_id=request.user_id,
+        user_id=principal.user_id,
         channel=request.channel,
         data_type=top_finding.data_type if top_finding else "custom",
         confidence=top_finding.confidence if top_finding else 0.0,

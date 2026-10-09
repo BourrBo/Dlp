@@ -65,12 +65,7 @@ def get_current_principal(
             .execute()
             .data
         )
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Unable to resolve organization membership",
-        ) from exc
-    except httpx.RequestError as exc:
+    except (httpx.HTTPError, RuntimeError) as exc:
         raise HTTPException(
             status_code=503,
             detail="Unable to resolve organization membership",
@@ -89,3 +84,25 @@ def get_current_principal(
         org_id=org_id,
         access_token=credentials.credentials,
     )
+
+
+def require_org_membership(principal: AuthenticatedPrincipal, org_id: UUID) -> None:
+    try:
+        memberships = (
+            get_authenticated_supabase(principal.access_token)
+            .table("org_members")
+            .select("org_id")
+            .eq("user_id", str(principal.user_id))
+            .eq("org_id", str(org_id))
+            .limit(1)
+            .execute()
+            .data
+        )
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to resolve organization membership",
+        ) from exc
+
+    if not memberships:
+        raise HTTPException(status_code=403, detail="Organization membership required")

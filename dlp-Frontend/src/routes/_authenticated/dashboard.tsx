@@ -503,16 +503,19 @@ function DashboardPage() {
     if (!orgId || FIXTURE_MODE) return;
     setScanPending(true);
     try {
-      const { data, error } = await supabase.auth.getUser();
+      const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
-      if (!data.user) throw new Error("Sign in before running a scan.");
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error("Sign in before running a scan.");
 
       const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}/api/scan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
           org_id: orgId,
-          user_id: data.user.id,
           channel: "api",
           destination: "manual-dashboard-scan",
           content: scanContent,
