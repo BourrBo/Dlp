@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { FindingStatus } from "@/lib/fixtures/findings";
+import { supabase } from "@/integrations/supabase/client";
+import { API_BASE_URL, FIXTURE_MODE } from "@/lib/env";
 import {
   INCIDENT_EVENT_FIXTURES,
   INCIDENT_FIXTURES,
@@ -21,6 +23,84 @@ export const Route = createFileRoute("/_authenticated/incidents/$incidentId")({
 });
 
 const STATUS_OPTIONS: FindingStatus[] = ["open", "triaged", "fixed", "accepted", "false_positive"];
+const INCIDENT_STATUSES = new Set<string>(STATUS_OPTIONS);
+
+function normalizeIncident(value: unknown, expectedId: string): Incident {
+  if (!value || typeof value !== "object") {
+    throw new Error("The incidents API returned an invalid incident.");
+  }
+
+  const row = value as Record<string, unknown>;
+  const requiredStringFields = [
+    "id",
+    "org_id",
+    "number",
+    "title",
+    "severity",
+    "source",
+    "data_type",
+    "first_seen",
+    "last_seen",
+    "created_at",
+    "updated_at",
+  ];
+  if (
+    requiredStringFields.some((field) => typeof row[field] !== "string") ||
+    row.id !== expectedId ||
+    typeof row.status !== "string" ||
+    !INCIDENT_STATUSES.has(row.status) ||
+    (row.assignee !== null && typeof row.assignee !== "string") ||
+    (row.policy_id !== null && typeof row.policy_id !== "string")
+  ) {
+    throw new Error("The incidents API returned an invalid incident.");
+  }
+
+  return {
+    id: row.id as string,
+    org_id: row.org_id as string,
+    number: row.number as string,
+    title: row.title as string,
+    severity: row.severity as string,
+    status: row.status as FindingStatus,
+    assignee: row.assignee as string | null,
+    source: row.source as string,
+    policy_id: row.policy_id as string | null,
+    data_type: row.data_type as string,
+    first_seen: row.first_seen as string,
+    last_seen: row.last_seen as string,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
+function normalizeIncidentEvent(value: unknown): IncidentEvent {
+  if (!value || typeof value !== "object") {
+    throw new Error("The incidents API returned an invalid timeline event.");
+  }
+
+  const row = value as Record<string, unknown>;
+  if (
+    typeof row.id !== "string" ||
+    typeof row.incident_id !== "string" ||
+    typeof row.org_id !== "string" ||
+    typeof row.event_type !== "string" ||
+    typeof row.created_at !== "string" ||
+    (row.actor !== null && typeof row.actor !== "string") ||
+    (row.comment !== null && typeof row.comment !== "string")
+  ) {
+    throw new Error("The incidents API returned an invalid timeline event.");
+  }
+
+  return {
+    id: row.id,
+    incident_id: row.incident_id,
+    org_id: row.org_id,
+    event_type: row.event_type,
+    actor: row.actor,
+    comment: row.comment,
+    created_at: row.created_at,
+  };
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -36,13 +116,86 @@ function IncidentDetailPage() {
   const [assignee, setAssignee] = useState("");
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fixture = INCIDENT_FIXTURES.find((item) => item.id === incidentId) ?? null;
-    setIncident(fixture);
-    setAssignee(fixture?.assignee ?? "");
-    setEvents(INCIDENT_EVENT_FIXTURES.filter((event) => event.incident_id === incidentId));
-    setLoading(false);
+    let active = true;
+
+    async function loadIncident() {
+      setLoading(true);
+      setError(null);
+      setIncident(null);
+      setEvents([]);
+
+      try {
+        if (FIXTURE_MODE) {
+          const fixture = INCIDENT_FIXTURES.find((item) => item.id === incidentId) ?? null;
+          if (active) {
+            setIncident(fixture);
+            setAssignee(fixture?.assignee ?? "");
+            setEvents(INCIDENT_EVENT_FIXTURES.filter((event) => event.incident_id === incidentId));
+          }
+          return;
+        }
+
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        const accessToken = data.session?.access_token;
+        if (!accessToken) throw new Error("Your session has expired. Sign in and try again.");
+
+        const response = await fetch(
+          `${API_BASE_URL.replace(/\/+$/, "")}/api/v1/incidents/${encodeURIComponent(incidentId)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (response.status === 404) return;
+        if (!response.ok) {
+          let message = `Request failed (${response.status}).`;
+          try {
+            const body: unknown = await response.json();
+            if (
+              body &&
+              typeof body === "object" &&
+              "detail" in body &&
+              typeof body.detail === "string"
+            ) {
+              message = body.detail;
+            }
+          } catch {
+            // Keep the HTTP status message when the response has no JSON body.
+          }
+          throw new Error(message);
+        }
+
+        const body: unknown = await response.json();
+        if (!body || typeof body !== "object" || !("events" in body) || !Array.isArray(body.events)) {
+          throw new Error("The incidents API returned an invalid response.");
+        }
+        const record = body as Record<string, unknown>;
+        const normalizedIncident = normalizeIncident(record, incidentId);
+        const normalizedEvents = record.events.map(normalizeIncidentEvent);
+        if (normalizedEvents.some((event) => event.incident_id !== incidentId)) {
+          throw new Error("The incidents API returned timeline events for another incident.");
+        }
+        if (active) {
+          setIncident(normalizedIncident);
+          setAssignee(normalizedIncident.assignee ?? "");
+          setEvents(normalizedEvents);
+        }
+      } catch (loadError) {
+        if (active) {
+          setError(
+            loadError instanceof Error ? loadError.message : "Unable to load incident.",
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadIncident();
+    return () => {
+      active = false;
+    };
   }, [incidentId]);
 
   function appendEvent(eventType: string, eventComment: string) {
@@ -67,7 +220,7 @@ function IncidentDetailPage() {
     if (!incident || incident.status === status) return;
     setIncident((current) => (current ? { ...current, status } : current));
     appendEvent("status_changed", `Status changed to ${status.replace(/_/g, " ")}.`);
-    toast.success("Incident status updated");
+    toast.success(FIXTURE_MODE ? "Incident status updated" : "Incident status changed locally; not saved");
   }
 
   function saveAssignee(event: FormEvent<HTMLFormElement>) {
@@ -79,7 +232,13 @@ function IncidentDetailPage() {
     }
     setIncident((current) => (current ? { ...current, assignee: nextAssignee || null } : current));
     appendEvent("assigned", nextAssignee ? `Assigned to ${nextAssignee}.` : "Incident unassigned.");
-    toast.success(nextAssignee ? "Incident assigned" : "Incident unassigned");
+    toast.success(
+      FIXTURE_MODE
+        ? nextAssignee
+          ? "Incident assigned"
+          : "Incident unassigned"
+        : "Assignee changed locally; not saved",
+    );
   }
 
   function addComment(event: FormEvent<HTMLFormElement>) {
@@ -91,7 +250,7 @@ function IncidentDetailPage() {
     }
     appendEvent("comment_added", text);
     setComment("");
-    toast.success("Comment added to timeline");
+    toast.success(FIXTURE_MODE ? "Comment added to timeline" : "Comment added locally; not saved");
   }
 
   const sortedEvents = events
@@ -109,6 +268,11 @@ function IncidentDetailPage() {
           <p className="py-8 text-center text-sm text-muted-foreground" role="status">
             Loading incident...
           </p>
+        ) : error ? (
+          <section className="space-y-2 py-12 text-center" role="alert">
+            <h1 className="text-2xl font-bold">Unable to load incident</h1>
+            <p className="text-sm text-muted-foreground">{error}</p>
+          </section>
         ) : !incident ? (
           <section className="space-y-2 py-12 text-center" role="status">
             <h1 className="text-2xl font-bold">Incident not found</h1>
