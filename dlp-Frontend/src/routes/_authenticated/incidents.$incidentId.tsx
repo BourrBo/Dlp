@@ -102,6 +102,80 @@ function normalizeIncidentEvent(value: unknown): IncidentEvent {
   };
 }
 
+async function getApiErrorMessage(response: Response, fallback: string): Promise<string> {
+  let message = `${fallback} (${response.status}).`;
+  try {
+    const body: unknown = await response.json();
+    if (
+      body &&
+      typeof body === "object" &&
+      "detail" in body &&
+      typeof body.detail === "string"
+    ) {
+      message = body.detail;
+    }
+  } catch {
+    // Keep the HTTP status message when the response has no JSON body.
+  }
+  return message;
+}
+
+async function fetchIncidentDetail(
+  incidentId: string,
+  accessToken: string,
+): Promise<{ incident: Incident; events: IncidentEvent[] } | null> {
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/+$/, "")}/api/v1/incidents/${encodeURIComponent(incidentId)}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response, "Request failed"));
+  }
+
+  const body: unknown = await response.json();
+  if (!body || typeof body !== "object" || !("events" in body) || !Array.isArray(body.events)) {
+    throw new Error("The incidents API returned an invalid response.");
+  }
+  const record = body as Record<string, unknown>;
+  const incident = normalizeIncident(record, incidentId);
+  const events = record.events.map(normalizeIncidentEvent);
+  if (events.some((event) => event.incident_id !== incidentId)) {
+    throw new Error("The incidents API returned timeline events for another incident.");
+  }
+  return { incident, events };
+}
+
+async function patchIncident(
+  incidentId: string,
+  accessToken: string,
+  changes: Partial<Pick<Incident, "status" | "assignee">>,
+): Promise<Incident> {
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/+$/, "")}/api/v1/incidents/${encodeURIComponent(incidentId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(changes),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response, "Update failed"));
+  }
+
+  const updated = normalizeIncident(await response.json(), incidentId);
+  if (
+    ("status" in changes && updated.status !== changes.status) ||
+    ("assignee" in changes && updated.assignee !== changes.assignee)
+  ) {
+    throw new Error("The incidents API did not confirm the requested update.");
+  }
+  return updated;
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -117,6 +191,7 @@ function IncidentDetailPage() {
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -143,43 +218,11 @@ function IncidentDetailPage() {
         const accessToken = data.session?.access_token;
         if (!accessToken) throw new Error("Your session has expired. Sign in and try again.");
 
-        const response = await fetch(
-          `${API_BASE_URL.replace(/\/+$/, "")}/api/v1/incidents/${encodeURIComponent(incidentId)}`,
-          { headers: { Authorization: `Bearer ${accessToken}` } },
-        );
-        if (response.status === 404) return;
-        if (!response.ok) {
-          let message = `Request failed (${response.status}).`;
-          try {
-            const body: unknown = await response.json();
-            if (
-              body &&
-              typeof body === "object" &&
-              "detail" in body &&
-              typeof body.detail === "string"
-            ) {
-              message = body.detail;
-            }
-          } catch {
-            // Keep the HTTP status message when the response has no JSON body.
-          }
-          throw new Error(message);
-        }
-
-        const body: unknown = await response.json();
-        if (!body || typeof body !== "object" || !("events" in body) || !Array.isArray(body.events)) {
-          throw new Error("The incidents API returned an invalid response.");
-        }
-        const record = body as Record<string, unknown>;
-        const normalizedIncident = normalizeIncident(record, incidentId);
-        const normalizedEvents = record.events.map(normalizeIncidentEvent);
-        if (normalizedEvents.some((event) => event.incident_id !== incidentId)) {
-          throw new Error("The incidents API returned timeline events for another incident.");
-        }
+        const detail = await fetchIncidentDetail(incidentId, accessToken);
         if (active) {
-          setIncident(normalizedIncident);
-          setAssignee(normalizedIncident.assignee ?? "");
-          setEvents(normalizedEvents);
+          setIncident(detail?.incident ?? null);
+          setAssignee(detail?.incident.assignee ?? "");
+          setEvents(detail?.events ?? []);
         }
       } catch (loadError) {
         if (active) {
@@ -216,29 +259,96 @@ function IncidentDetailPage() {
     setIncident((current) => (current ? { ...current, updated_at: createdAt } : current));
   }
 
-  function changeStatus(status: FindingStatus) {
+  async function changeStatus(status: FindingStatus) {
     if (!incident || incident.status === status) return;
-    setIncident((current) => (current ? { ...current, status } : current));
-    appendEvent("status_changed", `Status changed to ${status.replace(/_/g, " ")}.`);
-    toast.success(FIXTURE_MODE ? "Incident status updated" : "Incident status changed locally; not saved");
+    if (FIXTURE_MODE) {
+      setIncident((current) => (current ? { ...current, status } : current));
+      appendEvent("status_changed", `Status changed to ${status.replace(/_/g, " ")}.`);
+      toast.success("Incident status updated");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error("Your session has expired. Sign in and try again.");
+
+      const updated = await patchIncident(incident.id, accessToken, { status });
+      setIncident(updated);
+
+      try {
+        const detail = await fetchIncidentDetail(incident.id, accessToken);
+        if (detail) setEvents(detail.events);
+        else throw new Error("Incident not found");
+      } catch (refreshError) {
+        toast.error(
+          `Status saved, but the timeline could not be refreshed: ${
+            refreshError instanceof Error ? refreshError.message : "Unknown error"
+          }`,
+        );
+        return;
+      }
+      toast.success("Incident status updated");
+    } catch (updateError) {
+      toast.error(updateError instanceof Error ? updateError.message : "Unable to update incident.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function saveAssignee(event: FormEvent<HTMLFormElement>) {
+  async function saveAssignee(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!incident) return;
     const nextAssignee = assignee.trim();
     if ((incident.assignee ?? "") === nextAssignee) {
       return;
     }
-    setIncident((current) => (current ? { ...current, assignee: nextAssignee || null } : current));
-    appendEvent("assigned", nextAssignee ? `Assigned to ${nextAssignee}.` : "Incident unassigned.");
-    toast.success(
-      FIXTURE_MODE
-        ? nextAssignee
-          ? "Incident assigned"
-          : "Incident unassigned"
-        : "Assignee changed locally; not saved",
-    );
+    const normalizedAssignee = nextAssignee || null;
+    if (FIXTURE_MODE) {
+      setIncident((current) =>
+        current ? { ...current, assignee: normalizedAssignee } : current,
+      );
+      appendEvent(
+        "assigned",
+        nextAssignee ? `Assigned to ${nextAssignee}.` : "Incident unassigned.",
+      );
+      toast.success(nextAssignee ? "Incident assigned" : "Incident unassigned");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = data.session?.access_token;
+      if (!accessToken) throw new Error("Your session has expired. Sign in and try again.");
+
+      const updated = await patchIncident(incident.id, accessToken, {
+        assignee: normalizedAssignee,
+      });
+      setIncident(updated);
+      setAssignee(updated.assignee ?? "");
+
+      try {
+        const detail = await fetchIncidentDetail(incident.id, accessToken);
+        if (detail) setEvents(detail.events);
+        else throw new Error("Incident not found");
+      } catch (refreshError) {
+        toast.error(
+          `Assignee saved, but the timeline could not be refreshed: ${
+            refreshError instanceof Error ? refreshError.message : "Unknown error"
+          }`,
+        );
+        return;
+      }
+      toast.success(nextAssignee ? "Incident assigned" : "Incident unassigned");
+    } catch (updateError) {
+      toast.error(updateError instanceof Error ? updateError.message : "Unable to update incident.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function addComment(event: FormEvent<HTMLFormElement>) {
@@ -305,6 +415,7 @@ function IncidentDetailPage() {
                   <select
                     aria-label="Incident status"
                     value={incident.status}
+                    disabled={saving}
                     onChange={(event) => {
                       const selected = STATUS_OPTIONS.find(
                         (status) => status === event.target.value,
@@ -330,8 +441,9 @@ function IncidentDetailPage() {
                       value={assignee}
                       onChange={(event) => setAssignee(event.target.value)}
                       placeholder="Name or leave blank to unassign"
+                      disabled={saving}
                     />
-                    <Button type="submit">Save</Button>
+                    <Button type="submit" disabled={saving}>Save</Button>
                   </div>
                 </form>
                 <form className="space-y-2 sm:col-span-2" onSubmit={addComment}>
