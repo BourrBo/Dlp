@@ -2,8 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import {
-  Bar,
-  BarChart,
+  Area,
+  AreaChart,
   CartesianGrid,
   Cell,
   Pie,
@@ -41,10 +41,13 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useOrg } from "@/hooks/use-org";
 import { API_BASE_URL, FIXTURE_MODE } from "@/lib/env";
-import serverSecurityArtwork from "../../../../dlp images/Glossy Server Security Icon.png";
+import serverSecurityArtwork from "../../../../dlp images/Metallic Server Security Icons.png";
+import gmailIcon from "../../../../dlp images/Pastel Gmail Envelope Icon.png";
+import googleDriveIcon from "../../../../dlp images/Pastel Google Drive Ribbon Logo.png";
+import chromeIcon from "../../../../dlp images/Soft Gradient Chrome Icon.png";
+import slackIcon from "../../../../dlp images/Slack Multicolor Logo on White.png";
 import { AppShell } from "@/components/app-shell";
 import { ClassificationChip } from "@/components/classification-chip";
-import { DecisionBadge } from "@/components/decision-badge";
 import { SeverityBadge } from "@/components/severity-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -99,8 +102,6 @@ type KpiDefinition = {
   previousValue: number;
   metric: string;
   icon: typeof FolderOpen;
-  color: string;
-  bg: string;
   inverted: boolean;
   pct: number;
   spark: number[];
@@ -126,12 +127,12 @@ const MOCK_TREND = MOCK_TREND_VALUES.map((counts, i) => {
 });
 
 const MOCK_DONUT = [
-  { name: "PII", value: 38, color: "oklch(0.55 0.22 25)" },
-  { name: "Credentials", value: 22, color: "oklch(0.44 0.17 255)" },
-  { name: "Financial", value: 18, color: "oklch(0.62 0.18 75)" },
-  { name: "Health", value: 11, color: "oklch(0.54 0.17 155)" },
-  { name: "Secrets", value: 7, color: "oklch(0.60 0.18 310)" },
-  { name: "Other", value: 4, color: "oklch(0.65 0.015 250)" },
+  { name: "PII", value: 38, color: "oklch(0.25 0 0)" },
+  { name: "Credentials", value: 22, color: "oklch(0.40 0 0)" },
+  { name: "Financial", value: 18, color: "oklch(0.55 0 0)" },
+  { name: "Health", value: 11, color: "oklch(0.68 0 0)" },
+  { name: "Secrets", value: 7, color: "oklch(0.78 0 0)" },
+  { name: "Other", value: 4, color: "oklch(0.88 0 0)" },
 ];
 
 const MOCK_CHANNEL_ACTIVITY = [
@@ -190,19 +191,19 @@ const MOCK_FINDINGS = [
 ];
 
 const CHART_COLORS = {
-  critical: "oklch(0.55 0.22 25)",
-  high: "oklch(0.62 0.18 45)",
-  medium: "oklch(0.62 0.18 75)",
-  low: "oklch(0.54 0.17 155)",
+  critical: "oklch(0.20 0 0)",
+  high: "oklch(0.38 0 0)",
+  medium: "oklch(0.58 0 0)",
+  low: "oklch(0.78 0 0)",
 };
 
 const DATA_TYPE_COLORS = [
-  "oklch(0.55 0.22 25)",
-  "oklch(0.44 0.17 255)",
-  "oklch(0.62 0.18 75)",
-  "oklch(0.54 0.17 155)",
-  "oklch(0.60 0.18 310)",
-  "oklch(0.65 0.015 250)",
+  "oklch(0.25 0 0)",
+  "oklch(0.40 0 0)",
+  "oklch(0.55 0 0)",
+  "oklch(0.68 0 0)",
+  "oklch(0.78 0 0)",
+  "oklch(0.88 0 0)",
 ];
 
 const CHANNEL_INFO = {
@@ -212,6 +213,51 @@ const CHANNEL_INFO = {
   api: { label: "API", icon: Activity },
 } as const;
 
+const CHANNEL_LOGOS: Record<string, string> = {
+  gmail: gmailIcon,
+  email: gmailIcon,
+  drive: googleDriveIcon,
+  google_drive: googleDriveIcon,
+  cloud_storage: googleDriveIcon,
+  browser: chromeIcon,
+  browser_agent: chromeIcon,
+  chrome: chromeIcon,
+  slack: slackIcon,
+};
+
+function ChannelIcon({
+  name,
+  fallback: FallbackIcon,
+  className = "size-6 object-contain",
+}: {
+  name?: string;
+  fallback?: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  className?: string;
+}) {
+  const normalized = name?.toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+  const logo =
+    CHANNEL_LOGOS[normalized] ??
+    (normalized.includes("gmail") || normalized.includes("email")
+      ? gmailIcon
+      : normalized.includes("drive")
+      ? googleDriveIcon
+      : normalized.includes("browser") || normalized.includes("chrome")
+      ? chromeIcon
+      : normalized.includes("slack")
+      ? slackIcon
+      : null);
+
+  if (logo) {
+    return <img src={logo} alt={name ?? "Channel"} className={className} />;
+  }
+
+  if (FallbackIcon) {
+    return <FallbackIcon className="size-3.5" style={{ color: "var(--muted-foreground)" }} />;
+  }
+
+  return null;
+}
+
 const MOCK_KPIS: KpiDefinition[] = [
   {
     label: "Total Findings",
@@ -219,8 +265,6 @@ const MOCK_KPIS: KpiDefinition[] = [
     previousValue: 0,
     metric: "total",
     icon: FolderOpen,
-    color: "oklch(0.44 0.17 255)",
-    bg: "oklch(0.44 0.17 255 / 0.08)",
     inverted: true,
     pct: 12,
     spark: [40, 55, 35, 70, 45, 80, 60],
@@ -231,8 +275,6 @@ const MOCK_KPIS: KpiDefinition[] = [
     previousValue: 0,
     metric: "block",
     icon: ShieldAlert,
-    color: "oklch(0.55 0.22 25)",
-    bg: "oklch(0.55 0.22 25 / 0.08)",
     inverted: true,
     pct: -8,
     spark: [40, 55, 35, 70, 45, 80, 60],
@@ -243,8 +285,6 @@ const MOCK_KPIS: KpiDefinition[] = [
     previousValue: 0,
     metric: "warn",
     icon: AlertTriangle,
-    color: "oklch(0.62 0.18 45)",
-    bg: "oklch(0.62 0.18 45 / 0.08)",
     inverted: true,
     pct: 5,
     spark: [40, 55, 35, 70, 45, 80, 60],
@@ -255,11 +295,19 @@ const MOCK_KPIS: KpiDefinition[] = [
     previousValue: 0,
     metric: "types",
     icon: Shield,
-    color: "oklch(0.54 0.17 155)",
-    bg: "oklch(0.54 0.17 155 / 0.08)",
     inverted: false,
     pct: 0,
     spark: [40, 55, 35, 70, 45, 80, 60],
+  },
+  {
+    label: "Active Policies",
+    value: 12,
+    previousValue: 0,
+    metric: "policies",
+    icon: ShieldAlert,
+    inverted: false,
+    pct: 0,
+    spark: [8, 10, 10, 11, 11, 12, 12],
   },
 ];
 
@@ -269,20 +317,22 @@ function GlassCard({
   className = "",
   children,
   style,
+  hoverable = true,
 }: {
   className?: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
+  hoverable?: boolean;
 }) {
   return (
     <div
-      className={`dashboard-elevated-card rounded-2xl border ${className}`}
+      className={`${hoverable ? "dashboard-card" : ""} rounded-2xl border ${className}`}
       style={{
-        background: "oklch(0.97 0 0 / 0.78)",
-        borderColor: "oklch(1 0 0 / 0.56)",
-        backdropFilter: "blur(16px)",
+        background: "var(--card)",
+        borderColor: "var(--border)",
+        backdropFilter: "blur(14px)",
         boxShadow:
-          "0 1px 2px oklch(0 0 0 / 0.04), 0 4px 12px oklch(0 0 0 / 0.045), 0 10px 28px oklch(0 0 0 / 0.025)",
+          "0 1px 2px oklch(0 0 0 / 0.03), 0 2px 8px oklch(0 0 0 / 0.035)",
         ...style,
       }}
     >
@@ -310,7 +360,7 @@ function SkeletonLine({ w = "w-full", h = "h-4" }: { w?: string; h?: string }) {
   return (
     <div
       className={`${w} ${h} rounded-md animate-pulse`}
-      style={{ background: "oklch(0.90 0.005 250)" }}
+      style={{ background: "var(--muted)" }}
     />
   );
 }
@@ -327,7 +377,7 @@ function TrendBadge({ pct, inverted = false }: { pct: number | null; inverted?: 
   if (pct === 0) {
     return (
       <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
-        style={{ background: "oklch(0.65 0.015 250 / 0.12)", color: "oklch(0.50 0.015 250)" }}>
+        style={{ background: "var(--muted)", color: "var(--muted-foreground)" }}>
         0%
       </span>
     );
@@ -338,9 +388,9 @@ function TrendBadge({ pct, inverted = false }: { pct: number | null; inverted?: 
       className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold"
       style={{
         background: good
-          ? "oklch(0.54 0.17 155 / 0.12)"
-          : "oklch(0.55 0.22 25 / 0.12)",
-        color: good ? "oklch(0.44 0.17 155)" : "oklch(0.50 0.22 25)",
+          ? "oklch(0.54 0.17 155 / 0.10)"
+          : "oklch(0.55 0.22 25 / 0.10)",
+        color: good ? "oklch(0.40 0.17 155)" : "oklch(0.48 0.22 25)",
       }}
     >
       {pct > 0 ? (
@@ -350,6 +400,25 @@ function TrendBadge({ pct, inverted = false }: { pct: number | null; inverted?: 
       )}
       {Math.abs(pct)}%
     </span>
+  );
+}
+
+function MiniSparkBars({ data, color }: { data: number[]; color: string }) {
+  const max = Math.max(...data, 1);
+  return (
+    <div className="flex items-end gap-[3px] h-5">
+      {data.map((value, i) => (
+        <div
+          key={i}
+          className="flex-1 rounded-[2px] min-w-[3px]"
+          style={{
+            height: `${value === 0 ? 0 : Math.max(12, (value / max) * 100)}%`,
+            background: color,
+            opacity: i === data.length - 1 ? 1 : 0.3,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -457,8 +526,6 @@ function DashboardPage() {
       previousValue: 0,
       metric: "total",
       icon: FolderOpen,
-      color: "oklch(0.44 0.17 255)",
-      bg: "oklch(0.44 0.17 255 / 0.08)",
       inverted: true,
     },
     {
@@ -467,8 +534,6 @@ function DashboardPage() {
       previousValue: 0,
       metric: "block",
       icon: ShieldAlert,
-      color: "oklch(0.55 0.22 25)",
-      bg: "oklch(0.55 0.22 25 / 0.08)",
       inverted: true,
     },
     {
@@ -477,8 +542,6 @@ function DashboardPage() {
       previousValue: 0,
       metric: "warn",
       icon: AlertTriangle,
-      color: "oklch(0.62 0.18 45)",
-      bg: "oklch(0.62 0.18 45 / 0.08)",
       inverted: true,
     },
     {
@@ -487,8 +550,14 @@ function DashboardPage() {
       previousValue: 0,
       metric: "types",
       icon: Shield,
-      color: "oklch(0.54 0.17 155)",
-      bg: "oklch(0.54 0.17 155 / 0.08)",
+      inverted: false,
+    },
+    {
+      label: "Active Policies",
+      value: 12,
+      previousValue: 0,
+      metric: "policies",
+      icon: ShieldAlert,
       inverted: false,
     },
   ] satisfies Omit<KpiDefinition, "pct" | "spark">[]).map((kpi) => ({
@@ -559,211 +628,214 @@ function DashboardPage() {
     year: "numeric",
   });
 
+  const donutTotal = typeDistribution.reduce((s, d) => s + d.value, 0);
+
   return (
     <AppShell>
       <style>{`
-        .dashboard-elevated-card {
-          transition: transform 220ms ease, box-shadow 220ms ease;
+        .dashboard-card {
+          transition: transform 200ms cubic-bezier(0.22,1,0.36,1), box-shadow 200ms cubic-bezier(0.22,1,0.36,1);
         }
         @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-          .dashboard-elevated-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 30px oklch(0 0 0 / 0.12), 0 4px 10px oklch(0 0 0 / 0.07) !important;
+          .dashboard-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px oklch(0 0 0 / 0.08), 0 2px 6px oklch(0 0 0 / 0.05) !important;
           }
         }
         @media (prefers-reduced-motion: reduce) {
-          .dashboard-elevated-card { transition: none; }
+          .dashboard-card { transition: none; }
         }
+        .hero-overview-card {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.88) 0%, rgba(246, 248, 251, 0.78) 50%, rgba(238, 242, 246, 0.68) 100%);
+          border: 1px solid rgba(255, 255, 255, 0.85);
+          box-shadow:
+            0 10px 30px -5px rgba(0, 0, 0, 0.04),
+            0 20px 40px -15px rgba(0, 0, 0, 0.05),
+            inset 0 1px 0 rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 250ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+          .hero-overview-card:hover {
+            transform: translateY(-2px);
+            box-shadow:
+              0 14px 34px -4px rgba(0, 0, 0, 0.07),
+              0 24px 44px -12px rgba(0, 0, 0, 0.06),
+              inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+          }
+        }
+        .dark .hero-overview-card {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 50%, rgba(255, 255, 255, 0.02) 100%);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          box-shadow:
+            0 10px 30px -5px rgba(0, 0, 0, 0.35),
+            inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+        @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+          .dark .hero-overview-card:hover {
+            box-shadow:
+              0 16px 36px -4px rgba(0, 0, 0, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .hero-overview-card { transition: none; }
+        }
+        .area-chart-gradient-critical { stop-color: oklch(0.20 0 0); }
+        .area-chart-gradient-high { stop-color: oklch(0.38 0 0); }
+        .area-chart-gradient-medium { stop-color: oklch(0.58 0 0); }
+        .area-chart-gradient-low { stop-color: oklch(0.78 0 0); }
       `}</style>
       <div
-        className="px-6 py-6 space-y-6"
-        style={{ minHeight: "calc(100vh - 56px)" }}
+        className="px-6 py-5 space-y-5"
+        style={{ minHeight: "calc(100vh - 48px)" }}
       >
         {/* ── Page header ─────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: "oklch(0.15 0.015 250)" }}>
+            <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>
               Hello, Ashish 👋
             </h1>
-            <p className="mt-1 text-sm" style={{ color: "oklch(0.52 0.018 250)" }}>
+            <p className="mt-0.5 text-[13px]" style={{ color: "var(--muted-foreground)" }}>
               Here's your organization's data loss prevention overview.
             </p>
           </div>
           {/* Date range selector */}
           <label
-            className="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors hover:bg-white/60"
+            className="flex items-center gap-2 rounded-xl border px-3 py-[7px] text-[13px] transition-colors hover:bg-accent/50 cursor-pointer"
             style={{
-              background: "oklch(1 0 0 / 0.7)",
-              borderColor: "oklch(0.88 0.008 250)",
-              color: "oklch(0.30 0.015 250)",
+              background: "var(--card)",
+              borderColor: "var(--border)",
+              color: "var(--foreground)",
             }}
           >
-            <Calendar className="size-4" style={{ color: "oklch(0.44 0.17 255)" }} />
+            <Calendar className="size-3.5" style={{ color: "var(--muted-foreground)" }} />
             <span className="sr-only">Dashboard date range</span>
             <select
               aria-label="Dashboard date range"
-              className="cursor-pointer appearance-none bg-transparent font-medium outline-none"
+              className="cursor-pointer appearance-none bg-transparent font-medium outline-none text-[13px]"
               value={range}
               onChange={(event) => setRange(event.target.value === "30" ? 30 : 7)}
             >
               <option value={7}>{dateLabel} — Last 7 days</option>
               <option value={30}>{dateLabel} — Last 30 days</option>
             </select>
-            <ChevronDown className="size-3.5" style={{ color: "oklch(0.55 0.015 250)" }} />
+            <ChevronDown className="size-3" style={{ color: "var(--muted-foreground)" }} />
           </label>
         </div>
 
         {/* ── Hero card ────────────────────────────────────────────────────── */}
         <div
-          className="dashboard-elevated-card relative overflow-hidden rounded-2xl border p-7 backdrop-blur-xl"
-          style={{
-            background: "linear-gradient(135deg, oklch(0.12 0 0 / 0.94), oklch(0.20 0 0 / 0.88))",
-            borderColor: "oklch(1 0 0 / 0.18)",
-            boxShadow:
-              "0 12px 36px oklch(0 0 0 / 0.28), inset 0 1px 0 oklch(1 0 0 / 0.10)",
-          }}
+          className="hero-overview-card relative overflow-hidden rounded-[24px] p-6"
         >
-          {/* Decorative circles */}
+          {/* Black-greyish ambient gradient on the right side to suit the illustration */}
           <div
-            className="absolute -top-8 -right-8 size-40 rounded-full opacity-10"
-            style={{ background: "oklch(1 0 0 / 0.30)" }}
-          />
-          <div
-            className="absolute top-4 right-32 size-20 rounded-full opacity-10"
-            style={{ background: "oklch(1 0 0 / 0.24)" }}
-          />
-          <div
-            className="absolute -bottom-10 right-16 size-28 rounded-full opacity-10"
-            style={{ background: "oklch(1 0 0 / 0.20)" }}
-          />
+            className="pointer-events-none absolute inset-y-0 right-0 w-full sm:w-[55%] overflow-hidden rounded-r-[24px]"
+          >
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(to left, rgba(18, 22, 28, 0.14) 0%, rgba(35, 42, 52, 0.07) 45%, transparent 100%)",
+              }}
+            />
+            <div
+              className="absolute -right-8 top-1/2 -translate-y-1/2 size-72 rounded-full blur-xl"
+              style={{
+                background:
+                  "radial-gradient(circle, rgba(15, 20, 26, 0.25) 0%, rgba(35, 43, 54, 0.14) 45%, rgba(65, 75, 90, 0.04) 65%, transparent 75%)",
+              }}
+            />
+          </div>
 
           <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
             <div className="max-w-lg">
-              <div
-                className="mb-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold"
-                style={{
-                  background: "oklch(1 0 0 / 0.12)",
-                  borderColor: "oklch(1 0 0 / 0.2)",
-                  color: "oklch(0.90 0.004 250)",
-                }}
-              >
-                <Shield className="size-3" />
-                Real-time Protection Active
+              <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-black/[0.07] dark:border-white/[0.12] bg-white/70 dark:bg-white/[0.08] backdrop-blur-md px-2.5 py-1 text-[11px] font-medium text-neutral-700 dark:text-neutral-300 shadow-xs">
+                <Shield className="size-3 text-neutral-600 dark:text-neutral-400" strokeWidth={2.2} />
+                <span>Real-time Protection Active</span>
               </div>
-              <h2
-                className="text-2xl font-bold tracking-tight"
-                style={{ color: "oklch(0.98 0.002 250)" }}
-              >
+              <h2 className="text-[22px] font-bold tracking-tight text-neutral-900 dark:text-white">
                 Detect. Monitor. Prevent.
               </h2>
-              <p className="mt-2 text-sm leading-relaxed" style={{ color: "oklch(0.78 0.006 250)" }}>
+              <p className="mt-1.5 max-w-lg text-[13px] leading-relaxed text-neutral-600 dark:text-neutral-400">
                 Keep your sensitive data safe across all channels with real-time monitoring and intelligent policy enforcement.
               </p>
-              <div className="mt-5 flex flex-wrap gap-3">
+              <div className="mt-4 flex flex-wrap gap-2.5">
                 <button
                   type="button"
                   disabled={!orgId || FIXTURE_MODE}
                   onClick={() => setScanOpen(true)}
                   title={FIXTURE_MODE ? "Scanning requires a configured Supabase account" : undefined}
-                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all hover:shadow-lg"
-                  style={{
-                    background: "oklch(1 0 0)",
-                    color: "oklch(0.25 0.015 250)",
-                    boxShadow: "0 2px 8px oklch(0 0 0 / 0.15)",
-                  }}
+                  className="flex items-center gap-2 rounded-xl bg-neutral-950 px-4 py-2 text-[13px] font-medium text-white shadow-xs transition-all hover:bg-neutral-800 hover:shadow-md active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
                 >
-                  <ScanSearch className="size-4" style={{ color: "oklch(0.35 0 0)" }} />
-                  Run New Scan
-                  <ArrowRight className="size-3.5" />
+                  <ScanSearch className="size-3.5" />
+                  <span>Run New Scan</span>
+                  <ArrowRight className="size-3" />
                 </button>
                 <Link
                   to="/events"
-                  className="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-80"
-                  style={{
-                    background: "oklch(1 0 0 / 0.12)",
-                    borderColor: "oklch(1 0 0 / 0.25)",
-                    color: "oklch(0.95 0.003 250)",
-                  }}
+                  className="flex items-center gap-2 rounded-xl border border-black/[0.08] dark:border-white/[0.12] bg-white/80 dark:bg-white/[0.08] backdrop-blur-md px-4 py-2 text-[13px] font-medium text-neutral-800 dark:text-neutral-200 shadow-xs transition-all hover:bg-white hover:text-black dark:hover:bg-white/[0.15] hover:shadow-sm active:scale-[0.98]"
                 >
-                  <FileText className="size-4" />
-                  View Findings
+                  <FileText className="size-3.5 text-neutral-600 dark:text-neutral-400" />
+                  <span>View Findings</span>
                 </Link>
               </div>
             </div>
 
-              {/* Hero illustration */}
+            {/* Hero illustration */}
+            <div className="relative flex shrink-0 items-center justify-center sm:w-auto">
               <div
-                className="relative flex w-full max-w-72 shrink-0 items-center justify-center overflow-hidden rounded-[28px] border p-4 sm:w-[32%] sm:min-w-64"
+                className="pointer-events-none absolute inset-0 -m-6 rounded-full blur-md"
                 style={{
-                  aspectRatio: "1 / 1",
-                  background: "linear-gradient(145deg, oklch(1 0 0 / 0.10), oklch(1 0 0 / 0.04))",
-                  borderColor: "oklch(1 0 0 / 0.20)",
-                  boxShadow:
-                    "0 10px 28px oklch(0 0 0 / 0.24), inset 0 1px 0 oklch(1 0 0 / 0.16)",
+                  background:
+                    "radial-gradient(circle, rgba(16, 21, 28, 0.26) 0%, rgba(38, 46, 58, 0.14) 45%, rgba(65, 75, 90, 0.04) 65%, transparent 75%)",
                 }}
-              >
-                <img
-                  src={serverSecurityArtwork}
-                  alt="Servers protected by a shield and lock"
-                  className="relative z-10 block h-full w-full object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.32)]"
-                />
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-10"
-                  style={{
-                    background:
-                      "linear-gradient(to bottom, transparent, oklch(0.16 0 0 / 0.18))",
-                  }}
-                />
-              </div>
+              />
+              <img
+                src={serverSecurityArtwork}
+                alt="Servers protected by a shield and lock"
+                className="relative z-10 block h-36 w-auto sm:h-40 md:h-44 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.18)]"
+              />
             </div>
           </div>
+        </div>
 
         {/* ── KPI cards ────────────────────────────────────────────────────── */}
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
           {kpis.map((kpi) => (
-            <GlassCard key={kpi.label} className="p-5">
+            <GlassCard key={kpi.label} className="p-4">
               <div className="flex items-start justify-between">
                 <div
-                  className="flex size-10 items-center justify-center rounded-xl"
-                  style={{ background: kpi.bg }}
+                  className="flex size-8 items-center justify-center rounded-lg"
+                  style={{ background: "var(--muted)" }}
                 >
-                  <kpi.icon className="size-5" style={{ color: kpi.color }} />
+                  <kpi.icon className="size-4" style={{ color: "var(--muted-foreground)" }} />
                 </div>
                 <TrendBadge pct={kpi.pct} inverted={kpi.inverted} />
               </div>
               {events.isLoading ? (
-                <div className="mt-4 space-y-2">
-                  <SkeletonLine w="w-16" h="h-7" />
-                  <SkeletonLine w="w-24" h="h-3" />
+                <div className="mt-3 space-y-2">
+                  <SkeletonLine w="w-16" h="h-6" />
+                  <SkeletonLine w="w-20" h="h-3" />
                 </div>
               ) : (
                 <>
                   <p
-                    className="mt-3 font-mono text-3xl font-bold tabular-nums"
-                    style={{ color: "oklch(0.15 0.015 250)" }}
+                    className="mt-2.5 font-mono text-2xl font-bold tabular-nums"
+                    style={{ color: "var(--foreground)" }}
                   >
                     {kpi.value.toLocaleString()}
                   </p>
-                  <p className="mt-0.5 text-xs" style={{ color: "oklch(0.52 0.018 250)" }}>
+                  <p className="mt-0.5 text-[11px] font-medium" style={{ color: "var(--muted-foreground)" }}>
                     {kpi.label}
                   </p>
-                  <p className="mt-1 text-[10px]" style={{ color: "oklch(0.65 0.012 250)" }}>
+                  <p className="text-[10px]" style={{ color: "var(--muted-foreground)", opacity: 0.7 }}>
                     vs previous {range} days
                   </p>
                   {/* Mini trend bars */}
-                  <div className="mt-3 flex items-end gap-0.5 h-6">
-                    {kpi.spark.map((value, i) => (
-                      <div
-                        key={i}
-                        className="flex-1 rounded-sm"
-                        style={{
-                          height: `${value === 0 ? 0 : Math.max(8, (value / Math.max(...kpi.spark, 1)) * 100)}%`,
-                          background: kpi.color,
-                          opacity: i === 6 ? 1 : 0.45,
-                        }}
-                      />
-                    ))}
+                  <div className="mt-2">
+                    <MiniSparkBars data={kpi.spark} color="var(--foreground)" />
                   </div>
                 </>
               )}
@@ -774,14 +846,14 @@ function DashboardPage() {
         {/* ── Charts row ───────────────────────────────────────────────────── */}
         <div className="grid gap-4 lg:grid-cols-3">
           {/* Findings Trend */}
-          <GlassCard className="p-5 lg:col-span-2">
-            <div className="flex items-start justify-between mb-5">
+          <GlassCard className="p-5 lg:col-span-2" hoverable={false}>
+            <div className="flex items-start justify-between mb-4">
               <div>
-                <h2 className="text-sm font-semibold" style={{ color: "oklch(0.18 0.015 250)" }}>
+                <h2 className="text-[13px] font-semibold" style={{ color: "var(--foreground)" }}>
                   {FIXTURE_MODE ? "Findings Trend" : "Event Trend"}
                 </h2>
-                <p className="mt-0.5 text-xs" style={{ color: "oklch(0.55 0.015 250)" }}>
-                  {FIXTURE_MODE ? "Daily findings by severity"                   : "Daily event volume"}
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
+                  {FIXTURE_MODE ? "Daily findings by severity" : "Daily event volume"}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -789,15 +861,15 @@ function DashboardPage() {
                   <button
                     key={r}
                     onClick={() => setRange(r)}
-                    className="rounded-lg px-2.5 py-1 text-xs font-medium transition-colors"
+                    className="rounded-lg px-2 py-1 text-[11px] font-medium transition-colors"
                     style={
                       range === r
                         ? {
-                            background: "oklch(0.18 0.015 250)",
-                            color: "white",
+                            background: "var(--foreground)",
+                            color: "var(--background)",
                           }
                         : {
-                            color: "oklch(0.55 0.015 250)",
+                            color: "var(--muted-foreground)",
                           }
                     }
                   >
@@ -808,119 +880,132 @@ function DashboardPage() {
             </div>
 
             {/* Legend */}
-            <div className="flex flex-wrap gap-3 mb-4">
+            <div className="flex flex-wrap gap-3 mb-3">
               {FIXTURE_MODE
                 ? (["critical", "high", "medium", "low"] as const).map((severity) => (
-                    <div key={severity} className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.50 0.015 250)" }}>
+                    <div key={severity} className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
                       <span className="size-2 rounded-sm" style={{ background: CHART_COLORS[severity] }} />
                       {severity.charAt(0).toUpperCase() + severity.slice(1)}
                     </div>
                   ))
                 : (
-                    <div className="flex items-center gap-1.5 text-xs" style={{ color: "oklch(0.50 0.015 250)" }}>
-                      <span className="size-2 rounded-sm" style={{ background: "oklch(0.44 0.17 255)" }} />
+                    <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
+                      <span className="size-2 rounded-sm" style={{ background: "var(--foreground)" }} />
                       Events
                     </div>
                   )}
             </div>
 
-            <div className="h-60">
+            <div className="h-56">
               {events.isLoading ? (
                 <div className="flex h-full items-center justify-center">
-                  <RefreshCw className="size-5 animate-spin" style={{ color: "oklch(0.65 0.015 250)" }} />
+                  <RefreshCw className="size-4 animate-spin" style={{ color: "var(--muted-foreground)" }} />
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
+                  <AreaChart
                     data={FIXTURE_MODE ? MOCK_TREND : dailyTrend}
-                    barSize={14}
-                    barCategoryGap="30%"
                   >
-                    <CartesianGrid vertical={false} stroke="oklch(0.90 0.006 250)" />
+                    <defs>
+                      <linearGradient id="gradCritical" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="oklch(0.20 0 0)" stopOpacity={0.3} />
+                        <stop offset="100%" stopColor="oklch(0.20 0 0)" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="gradHigh" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="oklch(0.38 0 0)" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="oklch(0.38 0 0)" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="gradMedium" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="oklch(0.58 0 0)" stopOpacity={0.2} />
+                        <stop offset="100%" stopColor="oklch(0.58 0 0)" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="gradLow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="oklch(0.78 0 0)" stopOpacity={0.15} />
+                        <stop offset="100%" stopColor="oklch(0.78 0 0)" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="gradSingle" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--foreground)" stopOpacity={0.2} />
+                        <stop offset="100%" stopColor="var(--foreground)" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
                     <XAxis
                       dataKey="date"
                       tickLine={false}
                       axisLine={false}
-                      fontSize={11}
-                      stroke="oklch(0.60 0.012 250)"
+                      fontSize={10}
+                      stroke="var(--muted-foreground)"
                     />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
-                      fontSize={11}
+                      fontSize={10}
                       width={28}
-                      stroke="oklch(0.60 0.012 250)"
+                      stroke="var(--muted-foreground)"
                       allowDecimals={false}
                     />
                     <Tooltip
-                      cursor={{ fill: "oklch(0.44 0.17 255 / 0.06)", radius: 6 }}
                       contentStyle={{
-                        background: "white",
-                        border: "1px solid oklch(0.88 0.008 250)",
-                        borderRadius: 12,
-                        fontSize: 12,
+                        background: "var(--popover)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 10,
+                        fontSize: 11,
                         boxShadow: "0 4px 16px oklch(0 0 0 / 0.08)",
+                        color: "var(--foreground)",
                       }}
                     />
                     {FIXTURE_MODE
                       ? (["low", "medium", "high", "critical"] as const).map((severity) => (
-                          <Bar
+                          <Area
                             key={severity}
+                            type="monotone"
                             dataKey={severity}
                             stackId="a"
-                            fill={CHART_COLORS[severity]}
-                            radius={severity === "critical" ? [4, 4, 0, 0] : 0}
+                            stroke={CHART_COLORS[severity]}
+                            strokeWidth={1.5}
+                            fill={`url(#grad${severity.charAt(0).toUpperCase() + severity.slice(1)})`}
                           />
                         ))
                       : (
-                          <Bar
+                          <Area
+                            type="monotone"
                             dataKey="count"
-                            fill="oklch(0.44 0.17 255)"
-                            radius={[4, 4, 0, 0]}
+                            stroke="var(--foreground)"
+                            strokeWidth={1.5}
+                            fill="url(#gradSingle)"
                           />
                         )}
-                  </BarChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               )}
             </div>
           </GlassCard>
 
           {/* Data Types Distribution */}
-          <GlassCard className="p-5">
-            <div className="flex items-start justify-between mb-4">
+          <GlassCard className="p-5" hoverable={false}>
+            <div className="flex items-start justify-between mb-3">
               <div>
-                <h2 className="text-sm font-semibold" style={{ color: "oklch(0.18 0.015 250)" }}>
+                <h2 className="text-[13px] font-semibold" style={{ color: "var(--foreground)" }}>
                   Data Types Distribution
                 </h2>
-                <p className="mt-0.5 text-xs" style={{ color: "oklch(0.55 0.015 250)" }}>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
                   Last {range} days
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setRange((value) => value === 7 ? 30 : 7)}
-                className="text-xs rounded-lg border px-2 py-1"
-                style={{
-                  color: "oklch(0.44 0.17 255)",
-                  borderColor: "oklch(0.44 0.17 255 / 0.25)",
-                  background: "oklch(0.44 0.17 255 / 0.06)",
-                }}
-              >
-                Last {range} Days
-              </button>
             </div>
 
-            <div className="flex justify-center">
-              <ResponsiveContainer width={160} height={160}>
+            <div className="flex justify-center relative">
+              <ResponsiveContainer width={150} height={150}>
                 <PieChart>
                   <Pie
                     data={typeDistribution}
                     cx="50%"
                     cy="50%"
-                    innerRadius={48}
-                    outerRadius={72}
-                    paddingAngle={3}
+                    innerRadius={46}
+                    outerRadius={68}
+                    paddingAngle={2}
                     dataKey="value"
+                    strokeWidth={0}
                   >
                     {typeDistribution.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
@@ -928,24 +1013,36 @@ function DashboardPage() {
                   </Pie>
                   <Tooltip
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid oklch(0.88 0.008 250)",
-                      borderRadius: 10,
-                      fontSize: 12,
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontSize: 11,
+                      color: "var(--foreground)",
                     }}
                   />
                 </PieChart>
               </ResponsiveContainer>
+              {/* Center label */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="text-center">
+                  <p className="text-lg font-bold tabular-nums" style={{ color: "var(--foreground)" }}>
+                    {donutTotal}
+                  </p>
+                  <p className="text-[9px] font-medium" style={{ color: "var(--muted-foreground)" }}>
+                    Total
+                  </p>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 space-y-1.5">
               {typeDistribution.map((item) => (
-                <div key={item.name} className="flex items-center gap-2 text-xs">
-                  <span className="size-2.5 shrink-0 rounded-sm" style={{ background: item.color }} />
-                  <span className="flex-1" style={{ color: "oklch(0.35 0.015 250)" }}>
+                <div key={item.name} className="flex items-center gap-2 text-[11px]">
+                  <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: item.color }} />
+                  <span className="flex-1" style={{ color: "var(--muted-foreground)" }}>
                     {item.name}
                   </span>
-                  <span className="font-semibold tabular-nums" style={{ color: "oklch(0.22 0.015 250)" }}>
+                  <span className="font-semibold tabular-nums" style={{ color: "var(--foreground)" }}>
                     {FIXTURE_MODE
                       ? item.value
                       : Math.round((item.value / Math.max(totalFindings, 1)) * 100)}
@@ -954,7 +1051,7 @@ function DashboardPage() {
                 </div>
               ))}
               {!typeDistribution.length && (
-                <p className="text-center text-xs text-muted-foreground">No findings in this date range.</p>
+                <p className="text-center text-[11px] text-muted-foreground">No findings in this date range.</p>
               )}
             </div>
           </GlassCard>
@@ -963,62 +1060,65 @@ function DashboardPage() {
         {/* ── Channel Activity + Channel Status ────────────────────────────── */}
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Channel Activity */}
-          <GlassCard className="p-5">
-            <div className="flex items-start justify-between mb-5">
+          <GlassCard className="p-5" hoverable={false}>
+            <div className="flex items-start justify-between mb-4">
               <div>
-                <h2 className="text-sm font-semibold" style={{ color: "oklch(0.18 0.015 250)" }}>
+                <h2 className="text-[13px] font-semibold" style={{ color: "var(--foreground)" }}>
                   Channel Activity
                 </h2>
-                <p className="mt-0.5 text-xs" style={{ color: "oklch(0.55 0.015 250)" }}>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
                   Events detected per channel
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setRange((value) => value === 7 ? 30 : 7)}
-                className="text-xs rounded-lg border px-2 py-1"
+                className="text-[11px] rounded-lg border px-2 py-1 font-medium transition-colors hover:bg-accent/50"
                 style={{
-                  color: "oklch(0.44 0.17 255)",
-                  borderColor: "oklch(0.44 0.17 255 / 0.25)",
-                  background: "oklch(0.44 0.17 255 / 0.06)",
+                  color: "var(--muted-foreground)",
+                  borderColor: "var(--border)",
                 }}
               >
                 Last {range} Days
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {channelActivity.map((ch) => (
                 <div key={ch.label} className="flex items-center gap-3">
                   <div
-                    className="flex size-9 shrink-0 items-center justify-center rounded-xl"
-                    style={{ background: "oklch(0.93 0.006 250)" }}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg border shadow-2xs overflow-hidden"
+                    style={{
+                      background: "#ffffff",
+                      borderColor: "var(--border)",
+                    }}
                   >
-                    <ch.icon className="size-4" style={{ color: "oklch(0.44 0.17 255)" }} />
+                    <ChannelIcon name={ch.label} fallback={ch.icon} className="size-6 object-contain" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium" style={{ color: "oklch(0.25 0.015 250)" }}>
+                      <span className="text-[11px] font-medium" style={{ color: "var(--foreground)" }}>
                         {ch.label}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs tabular-nums font-semibold" style={{ color: "oklch(0.22 0.015 250)" }}>
+                        <span className="text-[11px] tabular-nums font-semibold" style={{ color: "var(--foreground)" }}>
                           {ch.events.toLocaleString()}
                         </span>
-                        <span className="text-[10px]" style={{ color: "oklch(0.60 0.015 250)" }}>
+                        <span className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
                           {ch.pct}%
                         </span>
                       </div>
                     </div>
                     <div
-                      className="h-1.5 rounded-full overflow-hidden"
-                      style={{ background: "oklch(0.90 0.006 250)" }}
+                      className="h-1 rounded-full overflow-hidden"
+                      style={{ background: "var(--muted)" }}
                     >
                       <div
                         className="h-full rounded-full transition-all"
                         style={{
                           width: `${ch.pct}%`,
-                          background: "oklch(0.44 0.17 255)",
+                          background: "var(--foreground)",
+                          opacity: 0.6,
                         }}
                       />
                     </div>
@@ -1026,19 +1126,19 @@ function DashboardPage() {
                 </div>
               ))}
               {!channelActivity.length && (
-                <p className="text-center text-xs text-muted-foreground">No channel activity in this date range.</p>
+                <p className="text-center text-[11px] text-muted-foreground">No channel activity in this date range.</p>
               )}
             </div>
           </GlassCard>
 
           {/* Channel Status */}
-          <GlassCard className="p-5">
-            <div className="flex items-start justify-between mb-5">
+          <GlassCard className="p-5" hoverable={false}>
+            <div className="flex items-start justify-between mb-4">
               <div>
-                <h2 className="text-sm font-semibold" style={{ color: "oklch(0.18 0.015 250)" }}>
+                <h2 className="text-[13px] font-semibold" style={{ color: "var(--foreground)" }}>
                   Channel Status
                 </h2>
-                <p className="mt-0.5 text-xs" style={{ color: "oklch(0.55 0.015 250)" }}>
+                <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
                   Integration connection health
                 </p>
               </div>
@@ -1046,22 +1146,22 @@ function DashboardPage() {
                 type="button"
                 disabled
                 title="Channel management is not available yet"
-                className="flex items-center gap-1 text-xs font-medium cursor-not-allowed opacity-60"
-                style={{ color: "oklch(0.44 0.17 255)" }}
+                className="flex items-center gap-1 text-[11px] font-medium cursor-not-allowed opacity-50"
+                style={{ color: "var(--muted-foreground)" }}
               >
                 View All
-                <ExternalLink className="size-3" />
+                <ExternalLink className="size-2.5" />
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {channels.isLoading ? (
                 Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 rounded-xl p-3">
-                    <SkeletonLine w="w-9" h="h-9" />
+                  <div key={i} className="flex items-center gap-3 rounded-xl p-2.5">
+                    <SkeletonLine w="w-8" h="h-8" />
                     <div className="flex-1 space-y-1.5">
-                      <SkeletonLine w="w-24" h="h-3" />
-                      <SkeletonLine w="w-16" h="h-2.5" />
+                      <SkeletonLine w="w-20" h="h-3" />
+                      <SkeletonLine w="w-14" h="h-2.5" />
                     </div>
                   </div>
                 ))
@@ -1073,61 +1173,53 @@ function DashboardPage() {
                   return (
                     <div
                       key={ch.key}
-                      className="flex items-center gap-3 rounded-xl p-3"
-                      style={{ border: "1px solid oklch(0.92 0.006 250)" }}
+                      className="flex items-center gap-3 rounded-xl p-2.5 transition-colors hover:bg-accent/30"
+                      style={{ border: "1px solid var(--border)" }}
                     >
                       <div
-                        className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+                        className="flex size-8 shrink-0 items-center justify-center rounded-lg border shadow-2xs overflow-hidden"
                         style={{
-                          background: connected
-                            ? "oklch(0.54 0.17 155 / 0.10)"
-                            : "oklch(0.93 0.006 250)",
+                          background: "#ffffff",
+                          borderColor: "var(--border)",
                         }}
                       >
-                        <ch.icon
-                          className="size-4"
-                          style={{
-                            color: connected
-                              ? "oklch(0.44 0.17 155)"
-                              : "oklch(0.55 0.015 250)",
-                          }}
-                        />
+                        <ChannelIcon name={ch.key} fallback={ch.icon} className="size-6 object-contain" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold" style={{ color: "oklch(0.22 0.015 250)" }}>
+                        <p className="text-[11px] font-semibold" style={{ color: "var(--foreground)" }}>
                           {ch.label}
                         </p>
-                        <p className="text-[10px]" style={{ color: "oklch(0.60 0.012 250)" }}>
+                        <p className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
                           {connectedAt
                             ? `Synced ${FIXTURE_MODE ? ch.lastSync : new Date(connectedAt).toLocaleString()}`
                             : "Not connected"}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         {connected ? (
                           <span
-                            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold"
                             style={{
-                              background: "oklch(0.54 0.17 155 / 0.12)",
-                              color: "oklch(0.40 0.17 155)",
+                              background: "oklch(0.54 0.17 155 / 0.10)",
+                              color: "oklch(0.38 0.17 155)",
                             }}
                           >
-                            <Wifi className="size-2.5" />
+                            <Wifi className="size-2" />
                             Connected
                           </span>
                         ) : (
                           <span
-                            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold"
                             style={{
-                              background: "oklch(0.55 0.22 25 / 0.10)",
-                              color: "oklch(0.50 0.22 25)",
+                              background: "oklch(0.55 0.22 25 / 0.08)",
+                              color: "oklch(0.48 0.22 25)",
                             }}
                           >
-                            <WifiOff className="size-2.5" />
+                            <WifiOff className="size-2" />
                             Connect
                           </span>
                         )}
-                        <ChevronRight className="size-3.5" style={{ color: "oklch(0.65 0.012 250)" }} />
+                        <ChevronRight className="size-3" style={{ color: "var(--muted-foreground)" }} />
                       </div>
                     </div>
                   );
@@ -1138,85 +1230,91 @@ function DashboardPage() {
         </div>
 
         {/* ── Recent Findings ──────────────────────────────────────────────── */}
-        <GlassCard className="p-5">
-          <div className="flex items-start justify-between mb-5">
+        <GlassCard className="p-5" hoverable={false}>
+          <div className="flex items-start justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold" style={{ color: "oklch(0.18 0.015 250)" }}>
+              <h2 className="text-[13px] font-semibold" style={{ color: "var(--foreground)" }}>
                 Recent Findings
               </h2>
-              <p className="mt-0.5 text-xs" style={{ color: "oklch(0.55 0.015 250)" }}>
+              <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
                 Latest policy violations detected across channels
               </p>
             </div>
             <Link
               to="/events"
-              className="flex items-center gap-1 text-xs font-medium"
-              style={{ color: "oklch(0.44 0.17 255)" }}
+              className="flex items-center gap-1 text-[11px] font-medium transition-colors hover:opacity-70"
+              style={{ color: "var(--muted-foreground)" }}
             >
               View All
-              <ExternalLink className="size-3" />
+              <ExternalLink className="size-2.5" />
             </Link>
           </div>
 
           {/* Desktop table */}
           <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-[11px]">
               <thead>
-                <tr style={{ borderBottom: "1px solid oklch(0.90 0.006 250)" }}>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
                   {["Severity", "Data Type", "Title", "Source", "User", "Time", "Action"].map((h) => (
                     <th
                       key={h}
-                      className="pb-3 pr-4 text-left font-semibold first:pl-0 last:pr-0"
-                      style={{ color: "oklch(0.55 0.015 250)" }}
+                      className="pb-2.5 pr-4 text-left font-semibold first:pl-0 last:pr-0"
+                      style={{ color: "var(--muted-foreground)" }}
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ borderColor: "oklch(0.92 0.005 250)" }}>
+              <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
                 {events.isLoading ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">Loading findings...</td>
+                    <td colSpan={7} className="py-8 text-center text-muted-foreground text-[11px]">Loading findings...</td>
                   </tr>
                 ) : displayedFindings.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-muted-foreground">No findings in this date range.</td>
+                    <td colSpan={7} className="py-8 text-center text-muted-foreground text-[11px]">No findings in this date range.</td>
                   </tr>
                 ) : displayedFindings.map((finding) => (
-                  <tr key={finding.id} className="group">
-                    <td className="py-3 pr-4">
+                  <tr
+                    key={finding.id}
+                    className="group transition-colors"
+                    style={{ cursor: "default" }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = "var(--accent)"}
+                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                  >
+                    <td className="py-2.5 pr-4">
                       <FindingSeverity severity={finding.severity} />
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-2.5 pr-4">
                       <ClassificationChip classification={FIXTURE_MODE ? finding.dataType : null} />
                     </td>
                     <td
-                      className="py-3 pr-4 max-w-[200px] truncate font-medium"
-                      style={{ color: "oklch(0.22 0.015 250)" }}
+                      className="py-2.5 pr-4 max-w-[180px] truncate font-medium"
+                      style={{ color: "var(--foreground)" }}
                     >
                       {finding.title}
                     </td>
-                    <td className="py-3 pr-4" style={{ color: "oklch(0.45 0.015 250)" }}>
+                    <td className="py-2.5 pr-4" style={{ color: "var(--muted-foreground)" }}>
                       {finding.source}
                     </td>
-                    <td className="py-3 pr-4 font-mono" style={{ color: "oklch(0.50 0.015 250)" }}>
+                    <td className="py-2.5 pr-4 font-mono" style={{ color: "var(--muted-foreground)" }}>
                       {finding.user.replace(/@.*/, "@…")}
                     </td>
-                    <td className="py-3 pr-4" style={{ color: "oklch(0.60 0.012 250)" }}>
+                    <td className="py-2.5 pr-4" style={{ color: "var(--muted-foreground)" }}>
                       {finding.time}
                     </td>
-                    <td className="py-3">
+                    <td className="py-2.5">
                       <Link
                         to="/events"
-                        className="flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity"
                         style={{
-                          color: "oklch(0.44 0.17 255)",
-                          borderColor: "oklch(0.44 0.17 255 / 0.25)",
+                          color: "var(--foreground)",
+                          borderColor: "var(--border)",
                         }}
                       >
                         Review
-                        <ArrowRight className="size-3" />
+                        <ArrowRight className="size-2.5" />
                       </Link>
                     </td>
                   </tr>
@@ -1226,73 +1324,77 @@ function DashboardPage() {
           </div>
 
           {/* Mobile list */}
-          <div className="sm:hidden space-y-3">
+          <div className="sm:hidden space-y-2">
             {displayedFindings.map((finding) => (
               <Link
                 key={finding.id}
                 to="/events"
                 aria-label={`View details for ${finding.title}`}
-                className="rounded-xl border p-3"
-                style={{ borderColor: "oklch(0.90 0.006 250)" }}
+                className="rounded-xl border p-3 block transition-colors hover:bg-accent/30"
+                style={{ borderColor: "var(--border)" }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <FindingSeverity severity={finding.severity} />
-                  <span className="text-[10px]" style={{ color: "oklch(0.60 0.012 250)" }}>
+                  <span className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
                     {finding.time}
                   </span>
                 </div>
-                <p className="mt-2 text-xs font-medium" style={{ color: "oklch(0.22 0.015 250)" }}>
+                <p className="mt-1.5 text-[11px] font-medium" style={{ color: "var(--foreground)" }}>
                   {finding.title}
                 </p>
-                <div className="mt-1.5 flex items-center gap-2">
+                <div className="mt-1 flex items-center gap-2">
                   <ClassificationChip classification={FIXTURE_MODE ? finding.dataType : null} />
-                  <span className="text-[10px]" style={{ color: "oklch(0.55 0.015 250)" }}>
+                  <span className="text-[10px]" style={{ color: "var(--muted-foreground)" }}>
                     {finding.source}
                   </span>
                 </div>
               </Link>
             ))}
             {!events.isLoading && !displayedFindings.length && (
-              <p className="py-8 text-center text-xs text-muted-foreground">No findings in this date range.</p>
+              <p className="py-8 text-center text-[11px] text-muted-foreground">No findings in this date range.</p>
             )}
           </div>
         </GlassCard>
 
         {/* ── Events by decision (preserved from original) ─────────────────── */}
         {!FIXTURE_MODE && (overview?.total_events ?? 0) > 0 && (
-          <GlassCard className="p-5">
-            <h2 className="text-sm font-semibold mb-1" style={{ color: "oklch(0.18 0.015 250)" }}>
+          <GlassCard className="p-5" hoverable={false}>
+            <h2 className="text-[13px] font-semibold mb-1" style={{ color: "var(--foreground)" }}>
               Event Volume
             </h2>
-            <p className="text-xs mb-5" style={{ color: "oklch(0.55 0.015 250)" }}>
+            <p className="text-[11px] mb-4" style={{ color: "var(--muted-foreground)" }}>
               Daily volume — last {range} days
             </p>
-            <div className="h-56">
+            <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={dailyTrend}
-                >
-                  <CartesianGrid vertical={false} stroke="oklch(0.90 0.006 250)" />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={11} stroke="oklch(0.60 0.012 250)" />
-                  <YAxis tickLine={false} axisLine={false} fontSize={11} width={28} stroke="oklch(0.60 0.012 250)" allowDecimals={false} />
+                <AreaChart data={dailyTrend}>
+                  <defs>
+                    <linearGradient id="gradVolume" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--foreground)" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="var(--foreground)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={10} stroke="var(--muted-foreground)" />
+                  <YAxis tickLine={false} axisLine={false} fontSize={10} width={28} stroke="var(--muted-foreground)" allowDecimals={false} />
                   <Tooltip
-                    cursor={{ fill: "oklch(0.44 0.17 255 / 0.06)", radius: 6 }}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid oklch(0.88 0.008 250)",
-                      borderRadius: 12,
-                      fontSize: 12,
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 10,
+                      fontSize: 11,
+                      color: "var(--foreground)",
                     }}
                   />
-                  <Bar dataKey="count" fill="oklch(0.44 0.17 255)" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Area type="monotone" dataKey="count" stroke="var(--foreground)" strokeWidth={1.5} fill="url(#gradVolume)" />
+                </AreaChart>
               </ResponsiveContainer>
             </div>
           </GlassCard>
         )}
 
         {/* Bottom padding */}
-        <div className="h-4" />
+        <div className="h-3" />
       </div>
       <Dialog open={scanOpen} onOpenChange={(open) => !scanPending && setScanOpen(open)}>
         <DialogContent>
