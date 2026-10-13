@@ -96,6 +96,8 @@ type OverviewResponse = {
   classification_counts: Record<string, number>;
 };
 
+type KpiVariant = "coral" | "green" | "blue" | "amber" | "purple";
+
 type KpiDefinition = {
   label: string;
   value: number;
@@ -105,7 +107,27 @@ type KpiDefinition = {
   inverted: boolean;
   pct: number;
   spark: number[];
+  variant?: KpiVariant;
 };
+
+const KPI_METRIC_VARIANTS: Record<string, KpiVariant> = {
+  total: "coral",
+  block: "green",
+  critical: "green",
+  warn: "blue",
+  high: "blue",
+  types: "amber",
+  policies: "purple",
+};
+
+function getKpiVariant(metric: string, index = 0): KpiVariant {
+  const normalized = metric.toLowerCase();
+  if (normalized in KPI_METRIC_VARIANTS) {
+    return KPI_METRIC_VARIANTS[normalized];
+  }
+  const fallbackVariants: KpiVariant[] = ["coral", "green", "blue", "amber", "purple"];
+  return fallbackVariants[index % fallbackVariants.length];
+}
 
 const MOCK_TREND_VALUES = [
   { critical: 4, high: 18, medium: 32, low: 25 },
@@ -126,13 +148,44 @@ const MOCK_TREND = MOCK_TREND_VALUES.map((counts, i) => {
   };
 });
 
+const DATA_TYPE_COLOR_MAP: Record<string, string> = {
+  pii: "#E89A9A",
+  credentials: "#91C9A5",
+  credential: "#91C9A5",
+  financial: "#8DB4EA",
+  financials: "#8DB4EA",
+  health: "#E9C778",
+  phi: "#E9C778",
+  secrets: "#B6A0E8",
+  secret: "#B6A0E8",
+  source_code: "#B6A0E8",
+  other: "#AFC8CD",
+};
+
+const DEFAULT_DATA_TYPE_PALETTE = [
+  "#E89A9A", // PII (soft coral red)
+  "#91C9A5", // Credentials (soft green)
+  "#8DB4EA", // Financial (soft blue)
+  "#E9C778", // Health (soft amber/yellow)
+  "#B6A0E8", // Secrets (soft lavender/purple)
+  "#AFC8CD", // Other (soft blue-grey)
+];
+
+function getDataTypeColor(category: string, index = 0): string {
+  const key = category.toLowerCase().trim().replace(/[\s-]+/g, "_");
+  return (
+    DATA_TYPE_COLOR_MAP[key] ??
+    DEFAULT_DATA_TYPE_PALETTE[index % DEFAULT_DATA_TYPE_PALETTE.length]
+  );
+}
+
 const MOCK_DONUT = [
-  { name: "PII", value: 38, color: "oklch(0.25 0 0)" },
-  { name: "Credentials", value: 22, color: "oklch(0.40 0 0)" },
-  { name: "Financial", value: 18, color: "oklch(0.55 0 0)" },
-  { name: "Health", value: 11, color: "oklch(0.68 0 0)" },
-  { name: "Secrets", value: 7, color: "oklch(0.78 0 0)" },
-  { name: "Other", value: 4, color: "oklch(0.88 0 0)" },
+  { name: "PII", value: 38, color: "#E89A9A" },
+  { name: "Credentials", value: 22, color: "#91C9A5" },
+  { name: "Financial", value: 18, color: "#8DB4EA" },
+  { name: "Health", value: 11, color: "#E9C778" },
+  { name: "Secrets", value: 7, color: "#B6A0E8" },
+  { name: "Other", value: 4, color: "#AFC8CD" },
 ];
 
 const MOCK_CHANNEL_ACTIVITY = [
@@ -197,14 +250,7 @@ const CHART_COLORS = {
   low: "oklch(0.78 0 0)",
 };
 
-const DATA_TYPE_COLORS = [
-  "oklch(0.25 0 0)",
-  "oklch(0.40 0 0)",
-  "oklch(0.55 0 0)",
-  "oklch(0.68 0 0)",
-  "oklch(0.78 0 0)",
-  "oklch(0.88 0 0)",
-];
+const DATA_TYPE_COLORS = DEFAULT_DATA_TYPE_PALETTE;
 
 const CHANNEL_INFO = {
   browser: { label: "Browser Agent", icon: Chrome },
@@ -268,6 +314,7 @@ const MOCK_KPIS: KpiDefinition[] = [
     inverted: true,
     pct: 12,
     spark: [40, 55, 35, 70, 45, 80, 60],
+    variant: "coral",
   },
   {
     label: "Critical",
@@ -278,6 +325,7 @@ const MOCK_KPIS: KpiDefinition[] = [
     inverted: true,
     pct: -8,
     spark: [40, 55, 35, 70, 45, 80, 60],
+    variant: "green",
   },
   {
     label: "High",
@@ -288,6 +336,7 @@ const MOCK_KPIS: KpiDefinition[] = [
     inverted: true,
     pct: 5,
     spark: [40, 55, 35, 70, 45, 80, 60],
+    variant: "blue",
   },
   {
     label: "Data Types",
@@ -298,6 +347,7 @@ const MOCK_KPIS: KpiDefinition[] = [
     inverted: false,
     pct: 0,
     spark: [40, 55, 35, 70, 45, 80, 60],
+    variant: "amber",
   },
   {
     label: "Active Policies",
@@ -308,6 +358,7 @@ const MOCK_KPIS: KpiDefinition[] = [
     inverted: false,
     pct: 0,
     spark: [8, 10, 10, 11, 11, 12, 12],
+    variant: "purple",
   },
 ];
 
@@ -403,21 +454,35 @@ function TrendBadge({ pct, inverted = false }: { pct: number | null; inverted?: 
   );
 }
 
-function MiniSparkBars({ data, color }: { data: number[]; color: string }) {
+function MiniSparkBars({
+  data,
+  color,
+  activeColor,
+}: {
+  data: number[];
+  color?: string;
+  activeColor?: string;
+}) {
   const max = Math.max(...data, 1);
+  const barColor = color ?? "var(--kpi-accent, var(--foreground))";
+  const finalColor = activeColor ?? "var(--kpi-icon-color, var(--foreground))";
+
   return (
     <div className="flex items-end gap-[3px] h-5">
-      {data.map((value, i) => (
-        <div
-          key={i}
-          className="flex-1 rounded-[2px] min-w-[3px]"
-          style={{
-            height: `${value === 0 ? 0 : Math.max(12, (value / max) * 100)}%`,
-            background: color,
-            opacity: i === data.length - 1 ? 1 : 0.3,
-          }}
-        />
-      ))}
+      {data.map((value, i) => {
+        const isLast = i === data.length - 1;
+        return (
+          <div
+            key={i}
+            className="flex-1 rounded-[2px] min-w-[3px]"
+            style={{
+              height: `${value === 0 ? 0 : Math.max(12, (value / max) * 100)}%`,
+              background: isLast ? finalColor : barColor,
+              opacity: isLast ? 1 : 0.35,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -475,7 +540,7 @@ function DashboardPage() {
     return Object.entries(overview?.data_type_counts ?? {}).map(([name, value], i) => ({
       name: name.replace(/[_-]+/g, " ").replace(/\b\w/g, (part) => part.toUpperCase()),
       value,
-      color: DATA_TYPE_COLORS[i % DATA_TYPE_COLORS.length],
+      color: getDataTypeColor(name, i),
     }));
   }, [overview]);
 
@@ -527,22 +592,25 @@ function DashboardPage() {
       metric: "total",
       icon: FolderOpen,
       inverted: true,
+      variant: "coral" as const,
     },
     {
-      label: "Blocked",
+      label: "Critical",
       value: totals["block"] ?? 0,
       previousValue: 0,
       metric: "block",
       icon: ShieldAlert,
       inverted: true,
+      variant: "green" as const,
     },
     {
-      label: "Warned",
+      label: "High",
       value: totals["warn"] ?? 0,
       previousValue: 0,
       metric: "warn",
       icon: AlertTriangle,
       inverted: true,
+      variant: "blue" as const,
     },
     {
       label: "Data Types",
@@ -551,6 +619,7 @@ function DashboardPage() {
       metric: "types",
       icon: Shield,
       inverted: false,
+      variant: "amber" as const,
     },
     {
       label: "Active Policies",
@@ -559,9 +628,11 @@ function DashboardPage() {
       metric: "policies",
       icon: ShieldAlert,
       inverted: false,
+      variant: "purple" as const,
     },
-  ] satisfies Omit<KpiDefinition, "pct" | "spark">[]).map((kpi) => ({
+  ] satisfies Omit<KpiDefinition, "pct" | "spark">[]).map((kpi, index) => ({
     ...kpi,
+    variant: kpi.variant ?? getKpiVariant(kpi.metric, index),
     pct: null,
     spark: kpi.metric === "total" ? totalSpark : [],
   }));
@@ -686,6 +757,102 @@ function DashboardPage() {
         .area-chart-gradient-high { stop-color: oklch(0.38 0 0); }
         .area-chart-gradient-medium { stop-color: oklch(0.58 0 0); }
         .area-chart-gradient-low { stop-color: oklch(0.78 0 0); }
+
+        /* ── KPI Pastel Card Themes ───────────────────────────────── */
+        .kpi-card-coral {
+          --kpi-bg: #FFF5F5;
+          --kpi-border: #FAD4D4;
+          --kpi-icon-bg: #FCE4E4;
+          --kpi-icon-color: #DC6262;
+          --kpi-accent: #E57373;
+        }
+        .dark .kpi-card-coral {
+          --kpi-bg: rgba(220, 98, 98, 0.08);
+          --kpi-border: rgba(220, 98, 98, 0.22);
+          --kpi-icon-bg: rgba(220, 98, 98, 0.20);
+          --kpi-icon-color: #F87171;
+          --kpi-accent: #F87171;
+        }
+
+        .kpi-card-green {
+          --kpi-bg: #F2FAF4;
+          --kpi-border: #D6EFE0;
+          --kpi-icon-bg: #DFF3E5;
+          --kpi-icon-color: #39865A;
+          --kpi-accent: #64B982;
+        }
+        .dark .kpi-card-green {
+          --kpi-bg: rgba(57, 134, 90, 0.08);
+          --kpi-border: rgba(57, 134, 90, 0.22);
+          --kpi-icon-bg: rgba(57, 134, 90, 0.20);
+          --kpi-icon-color: #4ADE80;
+          --kpi-accent: #4ADE80;
+        }
+
+        .kpi-card-blue {
+          --kpi-bg: #F2F7FF;
+          --kpi-border: #DBE8FC;
+          --kpi-icon-bg: #E0EBFF;
+          --kpi-icon-color: #4C78C5;
+          --kpi-accent: #7199E8;
+        }
+        .dark .kpi-card-blue {
+          --kpi-bg: rgba(76, 120, 197, 0.08);
+          --kpi-border: rgba(76, 120, 197, 0.22);
+          --kpi-icon-bg: rgba(76, 120, 197, 0.20);
+          --kpi-icon-color: #60A5FA;
+          --kpi-accent: #60A5FA;
+        }
+
+        .kpi-card-amber {
+          --kpi-bg: #FFFBF0;
+          --kpi-border: #FCEAC0;
+          --kpi-icon-bg: #FFF0CC;
+          --kpi-icon-color: #B98525;
+          --kpi-accent: #E5B84F;
+        }
+        .dark .kpi-card-amber {
+          --kpi-bg: rgba(185, 133, 37, 0.08);
+          --kpi-border: rgba(185, 133, 37, 0.22);
+          --kpi-icon-bg: rgba(185, 133, 37, 0.20);
+          --kpi-icon-color: #FBBF24;
+          --kpi-accent: #FBBF24;
+        }
+
+        .kpi-card-purple {
+          --kpi-bg: #F8F5FF;
+          --kpi-border: #E8DCFC;
+          --kpi-icon-bg: #EBE3FF;
+          --kpi-icon-color: #8064C9;
+          --kpi-accent: #A18AE8;
+        }
+        .dark .kpi-card-purple {
+          --kpi-bg: rgba(128, 100, 201, 0.08);
+          --kpi-border: rgba(128, 100, 201, 0.22);
+          --kpi-icon-bg: rgba(128, 100, 201, 0.20);
+          --kpi-icon-color: #C084FC;
+          --kpi-accent: #C084FC;
+        }
+
+        /* ── Recent Findings Card Theme ──────────────────────────── */
+        .recent-findings-card {
+          --findings-card-bg: #F8F5FF;
+          --findings-card-border: #E8DFF7;
+          --findings-divider: #E9E3F1;
+          --findings-th: #666873;
+          --findings-row-hover: rgba(128, 100, 201, 0.05);
+          --findings-mobile-border: #E8DFF7;
+          --findings-review-border: #E2D7F3;
+        }
+        .dark .recent-findings-card {
+          --findings-card-bg: rgba(128, 100, 201, 0.08);
+          --findings-card-border: rgba(128, 100, 201, 0.22);
+          --findings-divider: rgba(128, 100, 201, 0.16);
+          --findings-th: oklch(0.65 0.012 250);
+          --findings-row-hover: rgba(128, 100, 201, 0.12);
+          --findings-mobile-border: rgba(128, 100, 201, 0.22);
+          --findings-review-border: rgba(128, 100, 201, 0.25);
+        }
       `}</style>
       <div
         className="px-6 py-5 space-y-5"
@@ -803,44 +970,58 @@ function DashboardPage() {
 
         {/* ── KPI cards ────────────────────────────────────────────────────── */}
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
-          {kpis.map((kpi) => (
-            <GlassCard key={kpi.label} className="p-4">
-              <div className="flex items-start justify-between">
-                <div
-                  className="flex size-8 items-center justify-center rounded-lg"
-                  style={{ background: "var(--muted)" }}
-                >
-                  <kpi.icon className="size-4" style={{ color: "var(--muted-foreground)" }} />
-                </div>
-                <TrendBadge pct={kpi.pct} inverted={kpi.inverted} />
-              </div>
-              {events.isLoading ? (
-                <div className="mt-3 space-y-2">
-                  <SkeletonLine w="w-16" h="h-6" />
-                  <SkeletonLine w="w-20" h="h-3" />
-                </div>
-              ) : (
-                <>
-                  <p
-                    className="mt-2.5 font-mono text-2xl font-bold tabular-nums"
-                    style={{ color: "var(--foreground)" }}
+          {kpis.map((kpi, index) => {
+            const variant = kpi.variant ?? getKpiVariant(kpi.metric, index);
+            return (
+              <GlassCard
+                key={kpi.label}
+                className={`kpi-card-${variant} p-4`}
+                style={{
+                  background: "var(--kpi-bg)",
+                  borderColor: "var(--kpi-border)",
+                }}
+              >
+                <div className="flex items-start justify-between">
+                  <div
+                    className="flex size-8 items-center justify-center rounded-lg"
+                    style={{ background: "var(--kpi-icon-bg)" }}
                   >
-                    {kpi.value.toLocaleString()}
-                  </p>
-                  <p className="mt-0.5 text-[11px] font-medium" style={{ color: "var(--muted-foreground)" }}>
-                    {kpi.label}
-                  </p>
-                  <p className="text-[10px]" style={{ color: "var(--muted-foreground)", opacity: 0.7 }}>
-                    vs previous {range} days
-                  </p>
-                  {/* Mini trend bars */}
-                  <div className="mt-2">
-                    <MiniSparkBars data={kpi.spark} color="var(--foreground)" />
+                    <kpi.icon className="size-4" style={{ color: "var(--kpi-icon-color)" }} />
                   </div>
-                </>
-              )}
-            </GlassCard>
-          ))}
+                  <TrendBadge pct={kpi.pct} inverted={kpi.inverted} />
+                </div>
+                {events.isLoading ? (
+                  <div className="mt-3 space-y-2">
+                    <SkeletonLine w="w-16" h="h-6" />
+                    <SkeletonLine w="w-20" h="h-3" />
+                  </div>
+                ) : (
+                  <>
+                    <p
+                      className="mt-2.5 font-mono text-2xl font-bold tabular-nums"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      {kpi.value.toLocaleString()}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium" style={{ color: "var(--muted-foreground)" }}>
+                      {kpi.label}
+                    </p>
+                    <p className="text-[10px]" style={{ color: "var(--muted-foreground)", opacity: 0.7 }}>
+                      vs previous {range} days
+                    </p>
+                    {/* Mini trend bars */}
+                    <div className="mt-2">
+                      <MiniSparkBars
+                        data={kpi.spark}
+                        color="var(--kpi-accent)"
+                        activeColor="var(--kpi-icon-color)"
+                      />
+                    </div>
+                  </>
+                )}
+              </GlassCard>
+            );
+          })}
         </div>
 
         {/* ── Charts row ───────────────────────────────────────────────────── */}
@@ -1230,7 +1411,14 @@ function DashboardPage() {
         </div>
 
         {/* ── Recent Findings ──────────────────────────────────────────────── */}
-        <GlassCard className="p-5" hoverable={false}>
+        <GlassCard
+          className="recent-findings-card p-5"
+          hoverable={false}
+          style={{
+            background: "var(--findings-card-bg)",
+            borderColor: "var(--findings-card-border)",
+          }}
+        >
           <div className="flex items-start justify-between mb-4">
             <div>
               <h2 className="text-[13px] font-semibold" style={{ color: "var(--foreground)" }}>
@@ -1254,19 +1442,19 @@ function DashboardPage() {
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-[11px]">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                <tr style={{ borderBottom: "1px solid var(--findings-divider)" }}>
                   {["Severity", "Data Type", "Title", "Source", "User", "Time", "Action"].map((h) => (
                     <th
                       key={h}
                       className="pb-2.5 pr-4 text-left font-semibold first:pl-0 last:pr-0"
-                      style={{ color: "var(--muted-foreground)" }}
+                      style={{ color: "var(--findings-th)" }}
                     >
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+              <tbody className="divide-y" style={{ borderColor: "var(--findings-divider)" }}>
                 {events.isLoading ? (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-muted-foreground text-[11px]">Loading findings...</td>
@@ -1280,8 +1468,8 @@ function DashboardPage() {
                     key={finding.id}
                     className="group transition-colors"
                     style={{ cursor: "default" }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = "var(--accent)"}
-                    onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--findings-row-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
                     <td className="py-2.5 pr-4">
                       <FindingSeverity severity={finding.severity} />
@@ -1310,7 +1498,7 @@ function DashboardPage() {
                         className="flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity"
                         style={{
                           color: "var(--foreground)",
-                          borderColor: "var(--border)",
+                          borderColor: "var(--findings-review-border)",
                         }}
                       >
                         Review
@@ -1330,8 +1518,8 @@ function DashboardPage() {
                 key={finding.id}
                 to="/events"
                 aria-label={`View details for ${finding.title}`}
-                className="rounded-xl border p-3 block transition-colors hover:bg-accent/30"
-                style={{ borderColor: "var(--border)" }}
+                className="rounded-xl border p-3 block transition-colors hover:bg-purple-500/[0.04]"
+                style={{ borderColor: "var(--findings-mobile-border)" }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <FindingSeverity severity={finding.severity} />
