@@ -2,6 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import {
+  Activity,
   LayoutDashboard,
   Search,
   Bell,
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 
 const NAV = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { to: "/events", label: "Events", icon: Activity },
   { to: "/findings", label: "Findings", icon: Search },
   { to: "/incidents", label: "Incidents", icon: AlertTriangle },
   { to: null, label: "Alerts", icon: Bell },

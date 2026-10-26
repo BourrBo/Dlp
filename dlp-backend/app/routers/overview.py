@@ -1,30 +1,43 @@
 from collections import Counter
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, Query
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.database import get_supabase
+from app.auth import AuthenticatedPrincipal, get_current_principal
+from app.database import get_authenticated_supabase
 
 
 router = APIRouter(prefix="/api/overview", tags=["overview"])
+Principal = Annotated[AuthenticatedPrincipal, Depends(get_current_principal)]
 
 
 @router.get("")
-def get_overview(org_id: str, days: int = Query(default=30, ge=1, le=90)):
+def get_overview(
+    principal: Principal,
+    days: int = Query(default=30, ge=1, le=90),
+):
     end = datetime.now(timezone.utc)
     first_day = end.date() - timedelta(days=days - 1)
     start = datetime.combine(first_day, time.min, tzinfo=timezone.utc)
 
-    query = (
-        get_supabase()
-        .table("dlp_events")
-        .select("id,channel,data_type,confidence,destination,decision,created_at")
-        .eq("org_id", org_id)
-    )
-    query.params["and"] = (
-        f"(created_at.gte.{start.isoformat()},created_at.lte.{end.isoformat()})"
-    )
-    events = query.execute().data
+    try:
+        query = (
+            get_authenticated_supabase(principal.access_token)
+            .table("dlp_events")
+            .select("id,channel,data_type,confidence,destination,decision,created_at")
+            .eq("org_id", str(principal.org_id))
+        )
+        query.params["and"] = (
+            f"(created_at.gte.{start.isoformat()},created_at.lte.{end.isoformat()})"
+        )
+        events = query.execute().data or []
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Overview data is temporarily unavailable",
+        ) from exc
 
     decision_counts = Counter()
     data_type_counts = Counter()

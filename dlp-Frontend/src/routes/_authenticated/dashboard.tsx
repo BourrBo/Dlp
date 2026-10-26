@@ -100,12 +100,12 @@ type KpiVariant = "coral" | "green" | "blue" | "amber" | "purple";
 
 type KpiDefinition = {
   label: string;
-  value: number;
+  value: number | null;
   previousValue: number;
   metric: string;
   icon: typeof FolderOpen;
   inverted: boolean;
-  pct: number;
+  pct: number | null;
   spark: number[];
   variant?: KpiVariant;
 };
@@ -122,11 +122,13 @@ const KPI_METRIC_VARIANTS: Record<string, KpiVariant> = {
 
 function getKpiVariant(metric: string, index = 0): KpiVariant {
   const normalized = metric.toLowerCase();
+
   if (normalized in KPI_METRIC_VARIANTS) {
-    return KPI_METRIC_VARIANTS[normalized];
+    return KPI_METRIC_VARIANTS[normalized] ?? "blue";
   }
+
   const fallbackVariants: KpiVariant[] = ["coral", "green", "blue", "amber", "purple"];
-  return fallbackVariants[index % fallbackVariants.length];
+  return fallbackVariants[index % fallbackVariants.length] ?? "blue";
 }
 
 const MOCK_TREND_VALUES = [
@@ -138,6 +140,10 @@ const MOCK_TREND_VALUES = [
   { critical: 9, high: 17, medium: 44, low: 33 },
   { critical: 6, high: 26, medium: 35, low: 27 },
 ];
+const MOCK_TREND_TOTAL = MOCK_TREND_VALUES.reduce(
+  (total, day) => total + day.critical + day.high + day.medium + day.low,
+  0,
+);
 
 const MOCK_TREND = MOCK_TREND_VALUES.map((counts, i) => {
   const d = new Date();
@@ -175,7 +181,8 @@ function getDataTypeColor(category: string, index = 0): string {
   const key = category.toLowerCase().trim().replace(/[\s-]+/g, "_");
   return (
     DATA_TYPE_COLOR_MAP[key] ??
-    DEFAULT_DATA_TYPE_PALETTE[index % DEFAULT_DATA_TYPE_PALETTE.length]
+    DEFAULT_DATA_TYPE_PALETTE[index % DEFAULT_DATA_TYPE_PALETTE.length] ??
+    "#AFC8CD"
   );
 }
 
@@ -243,6 +250,16 @@ const MOCK_FINDINGS = [
   },
 ];
 
+type DisplayedFinding = {
+  id: string;
+  severity: string | null;
+  dataType: string | null;
+  title: string;
+  source: string;
+  user: string;
+  time: string;
+};
+
 const CHART_COLORS = {
   critical: "oklch(0.20 0 0)",
   high: "oklch(0.38 0 0)",
@@ -306,7 +323,7 @@ function ChannelIcon({
 
 const MOCK_KPIS: KpiDefinition[] = [
   {
-    label: "Total Findings",
+    label: "Total Events",
     value: 847,
     previousValue: 0,
     metric: "total",
@@ -317,7 +334,7 @@ const MOCK_KPIS: KpiDefinition[] = [
     variant: "coral",
   },
   {
-    label: "Critical",
+    label: "Blocked Events",
     value: 34,
     previousValue: 0,
     metric: "block",
@@ -328,7 +345,7 @@ const MOCK_KPIS: KpiDefinition[] = [
     variant: "green",
   },
   {
-    label: "High",
+    label: "Warned Events",
     value: 128,
     previousValue: 0,
     metric: "warn",
@@ -351,13 +368,13 @@ const MOCK_KPIS: KpiDefinition[] = [
   },
   {
     label: "Active Policies",
-    value: 12,
+    value: null,
     previousValue: 0,
     metric: "policies",
     icon: ShieldAlert,
     inverted: false,
-    pct: 0,
-    spark: [8, 10, 10, 11, 11, 12, 12],
+    pct: null,
+    spark: [],
     variant: "purple",
   },
 ];
@@ -494,7 +511,8 @@ function DashboardPage() {
   const [scanOpen, setScanOpen] = useState(false);
   const [scanContent, setScanContent] = useState("");
   const [scanPending, setScanPending] = useState(false);
-  const { data: orgId } = useOrg();
+  const org = useOrg();
+  const orgId = org.data;
   const queryClient = useQueryClient();
 
   const events = useQuery({
@@ -502,9 +520,15 @@ function DashboardPage() {
     enabled: !!orgId,
     queryFn: async () => {
       if (FIXTURE_MODE) return null;
-      const params = new URLSearchParams({ org_id: orgId!, days: String(range) });
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("Your session has expired. Sign in and try again.");
+
+      const params = new URLSearchParams({ days: String(range) });
       const response = await fetch(
         `${API_BASE_URL.replace(/\/+$/, "")}/api/overview?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
       );
       const data = await response.json().catch(() => null);
       if (!response.ok) {
@@ -534,19 +558,26 @@ function DashboardPage() {
     date: date.slice(5),
     count,
   }));
+  const fixtureRangeAvailable = range === 7;
 
   const typeDistribution = useMemo(() => {
-    if (FIXTURE_MODE) return MOCK_DONUT;
+    if (FIXTURE_MODE) return fixtureRangeAvailable ? MOCK_DONUT : [];
     return Object.entries(overview?.data_type_counts ?? {}).map(([name, value], i) => ({
       name: name.replace(/[_-]+/g, " ").replace(/\b\w/g, (part) => part.toUpperCase()),
       value,
       color: getDataTypeColor(name, i),
     }));
-  }, [overview]);
+  }, [overview, fixtureRangeAvailable]);
 
   const channelActivity = useMemo(() => {
     if (FIXTURE_MODE) {
-      return MOCK_CHANNEL_ACTIVITY.map(({ name, ...channel }) => ({ ...channel, label: name }));
+      if (!fixtureRangeAvailable) return [];
+      const maxCount = Math.max(1, ...MOCK_CHANNEL_ACTIVITY.map(({ events }) => events));
+      return MOCK_CHANNEL_ACTIVITY.map(({ name, ...channel }) => ({
+        ...channel,
+        label: name,
+        pct: Math.round((channel.events / maxCount) * 100),
+      }));
     }
     const counts = Object.entries(overview?.channel_counts ?? {});
     const maxCount = Math.max(1, ...counts.map(([, count]) => count));
@@ -560,22 +591,22 @@ function DashboardPage() {
         events: count,
         pct: Math.round((count / maxCount) * 100),
       }));
-  }, [overview]);
+  }, [overview, fixtureRangeAvailable]);
 
   const recentFindings = (overview?.recent_events ?? []).slice(0, 5);
-  const displayedFindings = FIXTURE_MODE
+  const displayedFindings: DisplayedFinding[] = FIXTURE_MODE
     ? MOCK_FINDINGS
     : recentFindings.map((finding) => ({
         id: finding.id,
         severity: null,
-        classification: null,
+        dataType: null,
         title: `${finding.data_type.replace(/[_-]+/g, " ")} detected`,
         source: CHANNEL_INFO[finding.channel as keyof typeof CHANNEL_INFO]?.label ?? finding.channel,
         user: "—",
         time: new Date(finding.created_at).toLocaleString(),
       }));
 
-  const totalFindings = FIXTURE_MODE ? 847 : overview?.total_events ?? 0;
+  const totalFindings = FIXTURE_MODE ? MOCK_TREND_TOTAL : overview?.total_events ?? 0;
   const dataTypeCount = FIXTURE_MODE ? 6 : Object.keys(overview?.data_type_counts ?? {}).length;
   const totalDailyEvents = dailyTrend.map((day) => day.count);
   const totalSpark = Array.from({ length: 7 }, (_, index) => {
@@ -584,33 +615,33 @@ function DashboardPage() {
     return totalDailyEvents.slice(start, end).reduce((sum, count) => sum + count, 0);
   });
 
-  const liveKpis: KpiDefinition[] = ([
+  const liveKpiDefinitions: Omit<KpiDefinition, "pct" | "spark">[] = [
     {
-      label: "Total Findings",
+      label: "Total Events",
       value: totalFindings,
       previousValue: 0,
       metric: "total",
       icon: FolderOpen,
       inverted: true,
-      variant: "coral" as const,
+      variant: "coral",
     },
     {
-      label: "Critical",
+      label: "Blocked Events",
       value: totals["block"] ?? 0,
       previousValue: 0,
       metric: "block",
       icon: ShieldAlert,
       inverted: true,
-      variant: "green" as const,
+      variant: "green",
     },
     {
-      label: "High",
+      label: "Warned Events",
       value: totals["warn"] ?? 0,
       previousValue: 0,
       metric: "warn",
       icon: AlertTriangle,
       inverted: true,
-      variant: "blue" as const,
+      variant: "blue",
     },
     {
       label: "Data Types",
@@ -619,24 +650,28 @@ function DashboardPage() {
       metric: "types",
       icon: Shield,
       inverted: false,
-      variant: "amber" as const,
+      variant: "amber",
     },
     {
       label: "Active Policies",
-      value: 12,
+      value: null,
       previousValue: 0,
       metric: "policies",
       icon: ShieldAlert,
       inverted: false,
-      variant: "purple" as const,
+      variant: "purple",
     },
-  ] satisfies Omit<KpiDefinition, "pct" | "spark">[]).map((kpi, index) => ({
+  ];
+  const liveKpis: KpiDefinition[] = liveKpiDefinitions.map((kpi) => ({
     ...kpi,
-    variant: kpi.variant ?? getKpiVariant(kpi.metric, index),
     pct: null,
     spark: kpi.metric === "total" ? totalSpark : [],
   }));
-  const kpis = FIXTURE_MODE ? MOCK_KPIS : liveKpis;
+  const kpis = FIXTURE_MODE
+    ? fixtureRangeAvailable
+      ? MOCK_KPIS
+      : MOCK_KPIS.map((kpi) => ({ ...kpi, value: null, pct: null, spark: [] }))
+    : liveKpis;
 
   async function runScan(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -968,8 +1003,54 @@ function DashboardPage() {
           </div>
         </div>
 
+        {org.isError ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4"
+            style={{ background: "var(--card)", borderColor: "var(--border)" }}
+          >
+            <p className="text-sm" style={{ color: "var(--foreground)" }}>
+              Unable to load your organization. {org.error instanceof Error ? org.error.message : "Please try again."}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void org.refetch()}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : org.isLoading ? (
+          <div
+            role="status"
+            className="rounded-xl border p-4 text-sm"
+            style={{ background: "var(--card)", borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+          >
+            Loading your organization...
+          </div>
+        ) : events.isError ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4"
+            style={{ background: "var(--card)", borderColor: "var(--border)" }}
+          >
+            <p className="text-sm" style={{ color: "var(--foreground)" }}>
+              Unable to load dashboard overview. Please try again.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void events.refetch()}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : (
+          <>
         {/* ── KPI cards ────────────────────────────────────────────────────── */}
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {kpis.map((kpi, index) => {
             const variant = kpi.variant ?? getKpiVariant(kpi.metric, index);
             return (
@@ -1001,14 +1082,16 @@ function DashboardPage() {
                       className="mt-2.5 font-mono text-2xl font-bold tabular-nums"
                       style={{ color: "var(--foreground)" }}
                     >
-                      {kpi.value.toLocaleString()}
+                      {kpi.value?.toLocaleString() ?? "—"}
                     </p>
                     <p className="mt-0.5 text-[11px] font-medium" style={{ color: "var(--muted-foreground)" }}>
                       {kpi.label}
                     </p>
-                    <p className="text-[10px]" style={{ color: "var(--muted-foreground)", opacity: 0.7 }}>
-                      vs previous {range} days
-                    </p>
+                    {kpi.pct !== null && (
+                      <p className="text-[10px]" style={{ color: "var(--muted-foreground)", opacity: 0.7 }}>
+                        vs previous {range} days
+                      </p>
+                    )}
                     {/* Mini trend bars */}
                     <div className="mt-2">
                       <MiniSparkBars
@@ -1034,7 +1117,11 @@ function DashboardPage() {
                   {FIXTURE_MODE ? "Findings Trend" : "Event Trend"}
                 </h2>
                 <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
-                  {FIXTURE_MODE ? "Daily findings by severity" : "Daily event volume"}
+                  {FIXTURE_MODE
+                    ? fixtureRangeAvailable
+                      ? "Daily findings by severity"
+                      : "Fixture sample only covers the last 7 days"
+                    : "Daily event volume"}
                 </p>
               </div>
               <div className="flex items-center gap-1">
@@ -1061,6 +1148,7 @@ function DashboardPage() {
             </div>
 
             {/* Legend */}
+            {(!FIXTURE_MODE || fixtureRangeAvailable) && (
             <div className="flex flex-wrap gap-3 mb-3">
               {FIXTURE_MODE
                 ? (["critical", "high", "medium", "low"] as const).map((severity) => (
@@ -1076,11 +1164,16 @@ function DashboardPage() {
                     </div>
                   )}
             </div>
+            )}
 
             <div className="h-56">
               {events.isLoading ? (
                 <div className="flex h-full items-center justify-center">
                   <RefreshCw className="size-4 animate-spin" style={{ color: "var(--muted-foreground)" }} />
+                </div>
+              ) : FIXTURE_MODE && !fixtureRangeAvailable ? (
+                <div className="flex h-full items-center justify-center text-center text-xs text-muted-foreground">
+                  30-day fixture data is unavailable.
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -1170,11 +1263,18 @@ function DashboardPage() {
                   Data Types Distribution
                 </h2>
                 <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
-                  Last {range} days
+                  {FIXTURE_MODE && !fixtureRangeAvailable
+                    ? "Fixture sample only covers the last 7 days"
+                    : `Last ${range} days`}
                 </p>
               </div>
             </div>
 
+            {FIXTURE_MODE && !fixtureRangeAvailable ? (
+              <div className="flex h-[150px] items-center justify-center text-center text-xs text-muted-foreground">
+                30-day fixture data is unavailable.
+              </div>
+            ) : (
             <div className="flex justify-center relative">
               <ResponsiveContainer width={150} height={150}>
                 <PieChart>
@@ -1207,14 +1307,15 @@ function DashboardPage() {
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="text-center">
                   <p className="text-lg font-bold tabular-nums" style={{ color: "var(--foreground)" }}>
-                    {donutTotal}
+                    {FIXTURE_MODE ? "100%" : donutTotal}
                   </p>
                   <p className="text-[9px] font-medium" style={{ color: "var(--muted-foreground)" }}>
-                    Total
+                    {FIXTURE_MODE ? "Share" : "Total"}
                   </p>
                 </div>
               </div>
             </div>
+            )}
 
             <div className="mt-3 space-y-1.5">
               {typeDistribution.map((item) => (
@@ -1232,7 +1333,11 @@ function DashboardPage() {
                 </div>
               ))}
               {!typeDistribution.length && (
-                <p className="text-center text-[11px] text-muted-foreground">No findings in this date range.</p>
+                <p className="text-center text-[11px] text-muted-foreground">
+                  {FIXTURE_MODE && !fixtureRangeAvailable
+                    ? "30-day fixture data is unavailable."
+                    : "No findings in this date range."}
+                </p>
               )}
             </div>
           </GlassCard>
@@ -1248,7 +1353,9 @@ function DashboardPage() {
                   Channel Activity
                 </h2>
                 <p className="mt-0.5 text-[11px]" style={{ color: "var(--muted-foreground)" }}>
-                  Events detected per channel
+                  {FIXTURE_MODE && !fixtureRangeAvailable
+                    ? "Fixture sample only covers the last 7 days"
+                    : "Events detected per channel"}
                 </p>
               </div>
               <button
@@ -1307,7 +1414,11 @@ function DashboardPage() {
                 </div>
               ))}
               {!channelActivity.length && (
-                <p className="text-center text-[11px] text-muted-foreground">No channel activity in this date range.</p>
+                <p className="text-center text-[11px] text-muted-foreground">
+                  {FIXTURE_MODE && !fixtureRangeAvailable
+                    ? "30-day fixture data is unavailable."
+                    : "No channel activity in this date range."}
+                </p>
               )}
             </div>
           </GlassCard>
@@ -1579,6 +1690,8 @@ function DashboardPage() {
               </ResponsiveContainer>
             </div>
           </GlassCard>
+        )}
+          </>
         )}
 
         {/* Bottom padding */}
