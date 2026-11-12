@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "DataChannel": {
+      "enum": [
+        "browser",
+        "file",
+        "repository",
+        "email",
+        "cloud_storage",
+        "chat",
+        "database",
+        "api",
+        "network",
+        "endpoint"
+      ],
+      "title": "DataChannel",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "channel": {
+      "$ref": "#/$defs/DataChannel"
+    },
+    "content": {
+      "format": "password",
+      "title": "Content",
+      "type": "string",
+      "writeOnly": true
+    },
+    "context": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Context",
+      "type": "object"
+    },
+    "destination": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Destination"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "title": "Requested At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "channel",
+    "content"
+  ],
+  "title": "ScanRequest",
+  "type": "object"
+}

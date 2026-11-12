@@ -5,6 +5,7 @@ Orchestrates the full detection pipeline in ascending cost order, so cheap
 checks short-circuit expensive ones:
 
   Stage 1 — built-in regex (credit card, API key, email — always runs)
+  Stage 1a — Secret Guard (cloud/VCS/payment keys, entropy, Indian identifiers)
   Stage 1b — org's custom regex rules (dlp_classifications, pattern_type='regex')
   Stage 2 — Presidio/spaCy NER for unstructured PII (names, addresses, phones)
   Stage 3 — EDM: hashed exact-match against the org's known-sensitive records
@@ -23,7 +24,7 @@ from uuid import UUID
 
 from app.database import get_supabase
 from app.models.finding import DataType, Finding
-from app.services.person_b import edm_service, fingerprint_service, ner_service
+from app.services.person_b import edm_service, fingerprint_service, ner_service, secretguard_service
 from app.services.person_b.rule_cache import cached
 from app.services.person_b.text_utils import redact as _redact  # kept as _redact — do not remove
 
@@ -55,6 +56,7 @@ _ALWAYS_RUN_NER_ABOVE_CHARS = 500
 
 def detect(content: str, org_id: UUID | None = None, filename: str | None = None) -> list[Finding]:
     findings = _detect_builtin_regex(content)
+    findings += secretguard_service.detect(content, filename)
 
     if org_id is not None:
         findings += _detect_custom_regex(content, org_id)
@@ -79,6 +81,8 @@ def _detect_builtin_regex(content: str) -> list[Finding]:
                     data_type=data_type,
                     confidence=confidence,
                     matched_snippet=_redact(match.group(0)),
+                    start=match.start(),
+                    end=match.end(),
                 )
             )
     return findings
@@ -97,6 +101,8 @@ def _detect_custom_regex(content: str, org_id: UUID) -> list[Finding]:
                     sensitivity_level=sensitivity_level,
                     matched_rule_id=rule_id,
                     label=label,
+                    start=match.start(),
+                    end=match.end(),
                 )
             )
     return findings

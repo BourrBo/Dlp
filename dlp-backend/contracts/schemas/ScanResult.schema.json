@@ -1,0 +1,314 @@
+{
+  "$defs": {
+    "ClassificationLevel": {
+      "enum": [
+        "public",
+        "internal",
+        "confidential",
+        "restricted",
+        "highly_restricted"
+      ],
+      "title": "ClassificationLevel",
+      "type": "string"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/ClassificationLevel"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "data_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Data Type",
+          "type": "string"
+        },
+        "detector": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Detector",
+          "type": "string"
+        },
+        "event_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Id"
+        },
+        "finding_id": {
+          "format": "uuid",
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fingerprint"
+        },
+        "first_seen_at": {
+          "format": "date-time",
+          "title": "First Seen At",
+          "type": "string"
+        },
+        "last_seen_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Seen At"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "masked_evidence": {
+          "maxLength": 512,
+          "title": "Masked Evidence",
+          "type": "string"
+        },
+        "policy_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolicyAction"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "severity": {
+          "$ref": "#/$defs/SeverityLevel"
+        },
+        "status": {
+          "$ref": "#/$defs/FindingStatus",
+          "default": "open"
+        }
+      },
+      "required": [
+        "finding_id",
+        "data_type",
+        "classification",
+        "severity",
+        "confidence",
+        "detector",
+        "masked_evidence",
+        "first_seen_at"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "FindingLocation": {
+      "additionalProperties": false,
+      "description": "Optional source coordinates; unset coordinates are omitted by producers.",
+      "properties": {
+        "cell": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cell"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "sheet": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sheet"
+        }
+      },
+      "title": "FindingLocation",
+      "type": "object"
+    },
+    "FindingStatus": {
+      "enum": [
+        "open",
+        "triaged",
+        "fixed",
+        "accepted",
+        "false_positive"
+      ],
+      "title": "FindingStatus",
+      "type": "string"
+    },
+    "PolicyAction": {
+      "enum": [
+        "allow",
+        "warn",
+        "block",
+        "log",
+        "redact",
+        "quarantine",
+        "revoke_share",
+        "require_approval"
+      ],
+      "title": "PolicyAction",
+      "type": "string"
+    },
+    "SeverityLevel": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "SeverityLevel",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "decision": {
+      "$ref": "#/$defs/PolicyAction"
+    },
+    "findings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "policy_version": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Version"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "scan_id": {
+      "format": "uuid",
+      "title": "Scan Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scan_id",
+    "request_id",
+    "decision",
+    "reason",
+    "completed_at"
+  ],
+  "title": "ScanResult",
+  "type": "object"
+}

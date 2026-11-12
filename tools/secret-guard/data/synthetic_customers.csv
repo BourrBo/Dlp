@@ -1,0 +1,11 @@
+customer_id,customer_name,aadhaar_no,pan,gstin,ifsc,bank_account_no,upi_id,mobile,email,last_login_ts,reference_no
+C001,Synthetic Customer 01,358813998697,,,,,,,,,
+C002,Synthetic Customer 02,,RXYPY9042Y,,,,,,,,
+C003,Synthetic Customer 03,,,24OHACJ2606O1ZU,,,,,,,
+C004,Synthetic Customer 04,,,,HDFC0012146,,,,,,
+C005,Synthetic Customer 05,,,,,853645568151,,,,,
+C006,Synthetic Customer 06,,,,,,synthetic.user06@okhdfcbank,,,,
+C007,Synthetic Customer 07,,,,,,,+91 8472940557,,,
+C008,Synthetic Customer 08,,,,,,,,person@gmail.com,,
+C009,Synthetic Customer 09,,,,,,,,,202406010003,
+C010,Synthetic Customer 10,,,,,,,,,,884697880939

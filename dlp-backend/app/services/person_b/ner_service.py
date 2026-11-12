@@ -93,6 +93,8 @@ def detect(content: str) -> list[Finding]:
                 confidence=round(r.score, 2),
                 matched_snippet=redact(snippet),
                 label=r.entity_type,
+                start=r.start,
+                end=r.end,
             )
         )
     return findings

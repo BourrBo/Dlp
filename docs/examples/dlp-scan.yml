@@ -1,0 +1,31 @@
+# Copy to .github/workflows/dlp-scan.yml in the repository you want to protect.
+name: DLP scan
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # only needed when upload-sarif is true
+
+jobs:
+  dlp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # range mode needs the base commit
+      - name: Scan pull request commits
+        if: github.event_name == 'pull_request'
+        uses: BourrBo/Dlp@v1
+        with:
+          mode: range
+          fail-on: medium
+          upload-sarif: "true"    # free on public repos; private repos need GitHub Code Security
+      - name: Scan working tree
+        if: github.event_name == 'push'
+        uses: BourrBo/Dlp@v1
+        with:
+          mode: path
+          fail-on: high

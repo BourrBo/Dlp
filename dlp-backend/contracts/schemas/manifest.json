@@ -1,0 +1,13 @@
+{
+  "contract_version": "1.0.0",
+  "models": [
+    "Finding",
+    "ScanRequest",
+    "ScanResult",
+    "Event",
+    "Policy",
+    "Incident",
+    "Principal"
+  ],
+  "status": "PROPOSED"
+}

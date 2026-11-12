@@ -8,6 +8,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+dlp-backend/data/
+dlp-backend/.test-tmp/
 
 # Frontend dependencies and build output
 node_modules/
@@ -28,3 +30,9 @@ service-account*.json
 *.pem
 *.p12
 *.key
+
+# Packaging and test output
+*.egg-info/
+build/
+.pytest_cache/
+*.sarif

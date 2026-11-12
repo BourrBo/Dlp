@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "backendUrl": { "type": "string", "description": "HTTPS URL for the DLP API" },
+    "apiKey": { "type": "string", "description": "Scoped DLP API key. Never expose this to page scripts." },
+    "supabaseUrl": { "type": "string", "description": "Supabase project URL for optional personal sign-in" },
+    "supabasePublishableKey": { "type": "string", "description": "Supabase publishable (anon) key; safe to ship to browsers" },
+    "enabled": { "type": "boolean" },
+    "failClosed": { "type": "boolean" },
+    "aiSites": { "type": "array", "items": { "type": "string" } }
+  }
+}

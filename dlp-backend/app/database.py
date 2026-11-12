@@ -17,12 +17,14 @@ class _RestResult:
 class _RestQuery:
     """Small PostgREST query adapter for the teammate detection/channel services."""
 
-    def __init__(self, table: str):
+    def __init__(self, table: str, access_token: str | None = None):
         if not re.fullmatch(r"[a-z][a-z0-9_]*", table):
             raise ValueError("Invalid Supabase table name")
         self.table = table
+        self.access_token = access_token
         self.params: dict[str, str] = {}
         self.body: dict[str, Any] | list[dict[str, Any]] | None = None
+        self.method = "GET"
 
     def select(self, columns: str = "*") -> "_RestQuery":
         self.params["select"] = columns
@@ -46,18 +48,38 @@ class _RestQuery:
 
     def insert(self, values: dict[str, Any] | list[dict[str, Any]]) -> "_RestQuery":
         self.body = values
+        self.method = "POST"
+        return self
+
+    def update(self, values: dict[str, Any]) -> "_RestQuery":
+        self.body = values
+        self.method = "PATCH"
+        return self
+
+    def delete(self) -> "_RestQuery":
+        self.method = "DELETE"
         return self
 
     def execute(self) -> _RestResult:
+        if self.method == "DELETE" and not any(k not in {"select", "order", "limit"} for k in self.params):
+            raise ValueError("Refusing to delete without a filter")
         url = f"{_base_url()}/rest/v1/{self.table}"
-        if self.body is None:
-            response = httpx.get(url, params=self.params, headers=_headers(), timeout=10.0)
+        headers = _headers(
+            prefer="return=representation" if self.body is not None else None,
+            access_token=self.access_token,
+        )
+        if self.method == "GET":
+            response = httpx.get(url, params=self.params, headers=headers, timeout=10.0)
+        elif self.method == "PATCH":
+            response = httpx.patch(url, params=self.params, json=self.body, headers=headers, timeout=10.0)
+        elif self.method == "DELETE":
+            response = httpx.delete(url, params=self.params, headers=headers, timeout=10.0)
         else:
             response = httpx.post(
                 url,
                 params=self.params,
                 json=self.body,
-                headers=_headers(prefer="return=representation"),
+                headers=headers,
                 timeout=10.0,
             )
         response.raise_for_status()
@@ -66,8 +88,11 @@ class _RestQuery:
 
 
 class _RestClient:
+    def __init__(self, access_token: str | None = None):
+        self.access_token = access_token
+
     def table(self, table: str) -> _RestQuery:
-        return _RestQuery(table)
+        return _RestQuery(table, access_token=self.access_token)
 
 
 @lru_cache(maxsize=1)
@@ -77,6 +102,17 @@ def get_supabase() -> _RestClient:
     return _RestClient()
 
 
+def get_authenticated_supabase(access_token: str) -> _RestClient:
+    """Return a Data API client that applies RLS for a verified user JWT."""
+    if not access_token:
+        raise RuntimeError("A verified user access token is required for Data API access")
+    settings = get_settings()
+    _base_url()
+    if not settings.supabase_publishable_key:
+        raise RuntimeError("SUPABASE_PUBLISHABLE_KEY is required for authenticated Data API access")
+    return _RestClient(access_token=access_token)
+
+
 def _base_url() -> str:
     settings = get_settings()
     if not settings.supabase_url or not settings.supabase_service_role_key:
@@ -84,10 +120,17 @@ def _base_url() -> str:
     return settings.supabase_url.rstrip("/")
 
 
-def _headers(*, prefer: str | None = None) -> dict[str, str]:
+def _headers(*, prefer: str | None = None, access_token: str | None = None) -> dict[str, str]:
     settings = get_settings()
-    key = settings.supabase_service_role_key
+    key = settings.supabase_publishable_key if access_token else settings.supabase_service_role_key
+    if not key:
+        raise RuntimeError("The required Supabase API key is not configured")
     headers = {"apikey": key, "Content-Type": "application/json"}
+    if access_token:
+        headers["Authorization"] = f"Bearer {access_token}"
+        if prefer:
+            headers["Prefer"] = prefer
+        return headers
     # New Supabase secret keys are opaque and belong in apikey only. Legacy
     # service_role keys are JWTs and also serve as the REST bearer token.
     if not key.startswith("sb_secret_"):
@@ -99,7 +142,13 @@ def _headers(*, prefer: str | None = None) -> dict[str, str]:
 
 def post_scan_event(event: dict) -> dict:
     url = f"{_base_url()}/rest/v1/dlp_events"
-    resp = httpx.post(url, json=event, headers=_headers(prefer="return=representation"), timeout=10.0)
+    resp = httpx.post(
+        url,
+        params={"on_conflict": "id"},
+        json=event,
+        headers=_headers(prefer="resolution=ignore-duplicates,return=representation"),
+        timeout=10.0,
+    )
     resp.raise_for_status()
     rows = resp.json()
     return rows[0] if rows else {}

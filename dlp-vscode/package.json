@@ -1,0 +1,37 @@
+{
+  "name": "dlp-vscode",
+  "displayName": "DLP Scanner",
+  "description": "Shows secrets and personal data in the editor on save, using the offline dlp CLI.",
+  "version": "0.1.0",
+  "publisher": "bourrbo",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": { "vscode": "^1.80.0", "node": ">=18" },
+  "categories": ["Linters", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The dlp executable path can only be changed in a trusted workspace.",
+      "restrictedConfigurations": ["dlp.cliPath"]
+    }
+  },
+  "contributes": {
+    "commands": [
+      { "command": "dlp.scanFile", "title": "DLP: Scan current file" },
+      { "command": "dlp.scanWorkspace", "title": "DLP: Scan workspace" },
+      { "command": "dlp.clear", "title": "DLP: Clear diagnostics" }
+    ],
+    "configuration": {
+      "title": "DLP",
+      "properties": {
+        "dlp.cliPath": { "type": "string", "default": "dlp", "scope": "machine", "description": "Path to the dlp executable (pip install dlp-cli)." },
+        "dlp.scanOnSave": { "type": "boolean", "default": true, "description": "Scan a file each time it is saved." },
+        "dlp.failOn": { "type": "string", "enum": ["low", "medium", "high", "critical"], "default": "low", "description": "Lowest severity shown as a problem." },
+        "dlp.timeoutSeconds": { "type": "number", "default": 20, "minimum": 1, "maximum": 300, "description": "Stop a scan that takes longer than this." }
+      }
+    }
+  },
+  "scripts": { "test": "node --test test/lib.test.js" }
+}

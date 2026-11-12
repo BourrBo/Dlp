@@ -1,0 +1,61 @@
+name: DLP scan
+description: Offline scan for secrets and personal data. Fails the job when findings reach the chosen severity.
+author: BourrBo
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  mode:
+    description: "path (scan files) or range (scan lines added in a pull request's commits; needs fetch-depth: 0)"
+    default: path
+  path:
+    description: Folder or file to scan in path mode.
+    default: .
+  fail-on:
+    description: Lowest severity that fails the job (low, medium, high, critical).
+    default: medium
+  sarif-file:
+    description: Where to write the SARIF report.
+    default: dlp.sarif
+  upload-sarif:
+    description: "Upload SARIF to GitHub code scanning. Private repositories need GitHub Code Security; public repositories are free."
+    default: "false"
+  python-version:
+    description: Python version used to run the scanner.
+    default: "3.12"
+
+outputs:
+  exit-code:
+    description: 0 clean, 1 findings at or above fail-on, 2 usage error, 3 internal error.
+    value: ${{ steps.scan.outputs.exit-code }}
+  sarif-file:
+    description: Path of the SARIF report.
+    value: ${{ steps.scan.outputs.sarif-file }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install dlp-cli
+      shell: bash
+      run: python -m pip install --disable-pip-version-check --quiet "$GITHUB_ACTION_PATH"
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        DLP_MODE: ${{ inputs.mode }}
+        DLP_PATH: ${{ inputs.path }}
+        DLP_FAIL_ON: ${{ inputs.fail-on }}
+        DLP_SARIF: ${{ inputs.sarif-file }}
+        DLP_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        DLP_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: bash "$GITHUB_ACTION_PATH/dlp-cli/action/run.sh"
+    - name: Upload SARIF
+      if: ${{ always() && inputs.upload-sarif == 'true' && hashFiles(inputs.sarif-file) != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: dlp

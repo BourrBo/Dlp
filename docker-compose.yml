@@ -3,19 +3,64 @@ services:
     build:
       context: ./dlp-backend
     environment:
-      APP_ENV: ${APP_ENV:-production}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3001,http://127.0.0.1:3001}
       SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY in .env}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY in .env}
       DLP_ADMIN_API_KEY: ${DLP_ADMIN_API_KEY:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+      SCAN_JOBS_ENCRYPTION_KEY: ${SCAN_JOBS_ENCRYPTION_KEY:-}
+      SCAN_JOBS_PREVIOUS_ENCRYPTION_KEYS: ${SCAN_JOBS_PREVIOUS_ENCRYPTION_KEYS:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
       GMAIL_PUBSUB_SUBSCRIPTION_ID: ${GMAIL_PUBSUB_SUBSCRIPTION_ID:-}
       DLP_BACKEND_BASE_URL: ${DLP_BACKEND_BASE_URL:-http://127.0.0.1:8000}
+      SCAN_JOBS_DB_PATH: /var/lib/dlp/scan-jobs.sqlite3
+      DEVICES_DB_PATH: /var/lib/dlp/devices.sqlite3
+      APP_ENV: ${APP_ENV:-production}
+      PLATFORM_DATABASE_URL: postgresql+psycopg://${PLATFORM_DB_USER:-dlp_platform}:${PLATFORM_DB_PASSWORD:?Set PLATFORM_DB_PASSWORD in .env}@platform-db:5432/${PLATFORM_DB_NAME:-dlp_platform}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      SUPABASE_JWKS_URL: ${SUPABASE_JWKS_URL:-}
+      RATE_LIMIT_BACKEND: valkey
+      VALKEY_URL: redis://valkey:6379/0
+    volumes:
+      - dlp-job-data:/var/lib/dlp
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      platform-db:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8.1
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  platform-db:
+    image: postgres:16.15
+    environment:
+      POSTGRES_USER: ${PLATFORM_DB_USER:-dlp_platform}
+      POSTGRES_PASSWORD: ${PLATFORM_DB_PASSWORD:?Set PLATFORM_DB_PASSWORD in .env}
+      POSTGRES_DB: ${PLATFORM_DB_NAME:-dlp_platform}
+    volumes:
+      - dlp-platform-data:/var/lib/postgresql/data
+      # Creates the Supabase-compatible `authenticated` role and auth.jwt() on first start.
+      - ./dlp-backend/platform_db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   dashboard:
@@ -24,6 +69,7 @@ services:
       args:
         VITE_SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env}
         VITE_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY in .env}
+        VITE_DLP_BACKEND_URL: ${DLP_DASHBOARD_BACKEND_URL:-http://localhost:8000}
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -31,7 +77,11 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?Set SUPABASE_PUBLISHABLE_KEY in .env}
     ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+      - "${DASHBOARD_BIND_ADDRESS:-127.0.0.1}:${DASHBOARD_PORT:-3001}:3000"
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  dlp-job-data:
+  dlp-platform-data:

@@ -13,26 +13,47 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`. The key is
+Set `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` in `.env`. The service key is
 server-only, must not be committed, and must never be passed to the dashboard
-build. For the dashboard, configure only the Supabase publishable key. See the
+build. The publishable key and verified user access token are used for RLS-scoped
+membership and incident requests. See the
 repository root README for the supported Docker Compose setup.
 
 ## Scan API
 
 - `GET /health` returns service status.
-- `POST /api/scan` runs detection, policy evaluation, and event persistence.
+- `POST /api/scan` runs detection, policy evaluation, and event persistence after bearer-token and organization-membership verification.
+- `POST /scans` scans a bounded synchronous file upload after the same authorization checks.
+- `/scan-jobs` submits, lists, polls, and cancels encrypted asynchronous file
+  scan jobs; user ownership is taken from the verified bearer token.
+- `/api/overview` and `/api/v1/incidents` provide authenticated dashboard APIs.
 
-The current synchronous endpoint accepts text. File and archive scanning APIs
-are not wired yet.
+The submitted organization must be a membership of the verified Supabase user;
+the backend replaces any body `user_id` with the authenticated user ID. The
+async queue has global, per-organization, per-user, and
+pending-byte caps; a full queue returns HTTP 429 with `Retry-After`.
+
+Set `SCAN_JOBS_ENCRYPTION_KEY` to a generated Fernet key for new deployments:
+
+```powershell
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Keep it stable while jobs are queued. For rotation, put the prior key in
+`SCAN_JOBS_PREVIOUS_ENCRYPTION_KEYS` (comma-separated during multi-step
+rotations) and remove it only after old pending jobs have drained. The old
+service-role-derived key is supported as a migration fallback for existing
+local queues; do not rely on it for new production deployments.
 
 ## P3 ingestion work
 
-The isolated `app/extractors/` module currently supports text/source files,
-CSV, JSON, and XML. It yields bounded overlapping text chunks with file and
-format-specific locations. It enforces the 25 MiB input limit and returns
-explicit skip reasons for unsupported or malformed files. PDF/Office, ZIP,
-async jobs, GitHub scanning, and the CLI package remain follow-up milestones.
+The isolated `app/extractors/` module supports text/source files, CSV, JSON,
+XML, PDF, DOCX, XLSX, PPTX, and bounded ZIP/TAR/GZIP archives. It yields text
+chunks with source locations, enforces input and parser limits, and returns
+explicit skip reasons. OCR is available for image-only PDFs when Tesseract and
+the language data are installed. See [`docs/ingestion.md`](docs/ingestion.md)
+for supported formats and limits. The offline CLI is available with
+`python -m app.cli_scan PATH --sarif results.sarif`.
 
 Inspect sample files locally:
 
@@ -58,7 +79,9 @@ locations, and current exclusions.
 
 ## Security boundary
 
-The extension currently supplies `org_id` and `user_id` in scan requests. The
-backend's service key bypasses RLS, so this prototype is not ready for an
-internet-facing multi-tenant deployment until P2's authenticated principal and
-tenant authorization work replaces client-supplied identity.
+The dashboard scan routes require a verified Supabase access token and check
+membership using a publishable-key client subject to RLS. Event and policy writes
+use the server-only key after that check. The browser extension still sends a
+managed DLP API key, which is not yet accepted by the user-token authentication
+contract; do not expose the extension to users until scoped API-key verification
+and principal resolution are integrated.

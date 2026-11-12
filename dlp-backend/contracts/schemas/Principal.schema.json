@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "ActorType": {
+      "enum": [
+        "user",
+        "service"
+      ],
+      "title": "ActorType",
+      "type": "string"
+    },
+    "AuthMethod": {
+      "enum": [
+        "jwt",
+        "api_key",
+        "sso",
+        "internal"
+      ],
+      "title": "AuthMethod",
+      "type": "string"
+    },
+    "Role": {
+      "enum": [
+        "owner",
+        "admin",
+        "analyst",
+        "viewer",
+        "auditor"
+      ],
+      "title": "Role",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "actor_type": {
+      "$ref": "#/$defs/ActorType"
+    },
+    "auth_method": {
+      "$ref": "#/$defs/AuthMethod"
+    },
+    "member_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Member Id"
+    },
+    "organization_id": {
+      "format": "uuid",
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/Role"
+    },
+    "scopes": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Scopes",
+      "type": "array"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
+    "subject_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Subject Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "organization_id",
+    "subject_id",
+    "actor_type",
+    "role",
+    "auth_method"
+  ],
+  "title": "Principal",
+  "type": "object"
+}

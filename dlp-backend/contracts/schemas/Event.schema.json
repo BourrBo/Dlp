@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "DataChannel": {
+      "enum": [
+        "browser",
+        "file",
+        "repository",
+        "email",
+        "cloud_storage",
+        "chat",
+        "database",
+        "api",
+        "network",
+        "endpoint"
+      ],
+      "title": "DataChannel",
+      "type": "string"
+    },
+    "PolicyAction": {
+      "enum": [
+        "allow",
+        "warn",
+        "block",
+        "log",
+        "redact",
+        "quarantine",
+        "revoke_share",
+        "require_approval"
+      ],
+      "title": "PolicyAction",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "channel": {
+      "$ref": "#/$defs/DataChannel"
+    },
+    "decision": {
+      "$ref": "#/$defs/PolicyAction"
+    },
+    "destination": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Destination"
+    },
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "finding_count": {
+      "minimum": 0,
+      "title": "Finding Count",
+      "type": "integer"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "organization_id": {
+      "format": "uuid",
+      "title": "Organization Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "request_id": {
+      "format": "uuid",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "scan_id": {
+      "format": "uuid",
+      "title": "Scan Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "organization_id",
+    "request_id",
+    "scan_id",
+    "channel",
+    "decision",
+    "reason",
+    "finding_count",
+    "occurred_at"
+  ],
+  "title": "Event",
+  "type": "object"
+}

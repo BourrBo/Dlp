@@ -1,0 +1,31 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: sudo apt-get update && sudo apt-get install -y libxml2-dev libxmlsec1-dev pkg-config tesseract-ocr
+      - run: pip install -r dlp-backend/requirements.txt pytest jsonschema
+      - run: cd dlp-backend && mkdir -p .test-tmp && APP_ENV=unit-test DATABASE_URL=sqlite:///./ci.db pytest -q
+  clients:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: pip install pytest jsonschema ./dlp-cli ./dlp-agent
+      - run: cd dlp-cli && pytest -q
+      - run: cd dlp-agent && pytest -q
+      - run: cd dlp-extension && node --test tests/*.test.js
+      - run: cd dlp-vscode && npm test
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd dlp-Frontend && bun install --frozen-lockfile && npx tsc --noEmit && npx vite build

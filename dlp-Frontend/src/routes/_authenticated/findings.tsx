@@ -1,0 +1,842 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, Download, Search, SlidersHorizontal } from "lucide-react";
+
+import { AppShell } from "@/components/app-shell";
+import { ClassificationChip } from "@/components/classification-chip";
+import { ConfidenceBar } from "@/components/confidence-bar";
+import { MaskedValue } from "@/components/masked-value";
+import { SeverityBadge } from "@/components/severity-badge";
+import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { FINDING_FIXTURES } from "@/lib/fixtures/findings";
+import { loadFindings, updateFinding, type FindingRecord } from "@/lib/findings-api";
+
+export const Route = createFileRoute("/_authenticated/findings")({
+  head: () => ({
+    meta: [
+      { title: "Findings — DLP Console" },
+      {
+        name: "description",
+        content: "Investigate and manage detected sensitive data.",
+      },
+      { property: "og:title", content: "Findings — DLP Console" },
+    ],
+  }),
+  component: FindingsPage,
+});
+
+type FindingStatus = (typeof FINDING_FIXTURES)[number]["status"];
+
+type FindingFilterKey = "severity" | "classification" | "data_type" | "status" | "source" | "detector";
+type FindingSortKey = "created_at" | "severity" | "confidence";
+type SortDirection = "asc" | "desc";
+type FindingSort = { key: FindingSortKey; direction: SortDirection } | null;
+type FindingCursor = Pick<(typeof FINDING_FIXTURES)[number], "created_at" | "id">;
+
+const PAGE_SIZE = 10;
+const STATUS_OPTIONS: FindingStatus[] = ["open", "triaged", "fixed", "accepted", "false_positive"];
+
+const SEVERITY_ORDER: Record<(typeof FINDING_FIXTURES)[number]["severity"], number> = {
+  low: 0,
+  medium: 1,
+  high: 2,
+  critical: 3,
+};
+
+const FILTER_FIELDS: { key: FindingFilterKey; label: string }[] = [
+  { key: "severity", label: "Severity" },
+  { key: "classification", label: "Classification" },
+  { key: "data_type", label: "Data type" },
+  { key: "status", label: "Status" },
+  { key: "source", label: "Source" },
+  { key: "detector", label: "Detector" },
+];
+
+function buildFilterOptions(records: FindingRecord[]) {
+  return Object.fromEntries(
+    FILTER_FIELDS.map(({ key }) => [key, [...new Set(records.map((finding) => finding[key]))].sort()]),
+  ) as Record<FindingFilterKey, string[]>;
+}
+
+const STATUS_STYLES: Record<FindingStatus, string> = {
+  open: "border-sky-500/30 bg-sky-500/10 text-sky-700",
+  triaged: "border-amber-500/30 bg-amber-500/10 text-amber-700",
+  fixed: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
+  accepted: "border-violet-500/30 bg-violet-500/10 text-violet-700",
+  false_positive: "border-border bg-muted text-muted-foreground",
+};
+
+function downloadFindingsCsv(findings: FindingRecord[], format: "csv" | "secureflow" = "csv") {
+  const columns = [
+    "ID",
+    "Severity",
+    "Classification",
+    "Data Type",
+    "Status",
+    "Source",
+    "Detector",
+    "Confidence",
+    "Created At",
+  ] as const;
+  const escapeCsvValue = (value: string | number) =>
+    `"${String(value).replace(/"/g, '""')}"`;
+  const rows = findings.map((finding) =>
+    [
+      finding.id,
+      finding.severity,
+      finding.classification,
+      finding.data_type,
+      finding.status,
+      finding.source,
+      finding.detector,
+      finding.confidence,
+      finding.created_at,
+    ]
+      .map(escapeCsvValue)
+      .join(","),
+  );
+  const csv = [columns.map(escapeCsvValue).join(","), ...rows].join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = format === "secureflow" ? "findings-secureflow.csv" : "findings.csv";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function FindingsPage() {
+  const [findingRecords, setFindingRecords] = useState<FindingRecord[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const noteTimers = useRef<Map<string, number>>(new Map());
+  const FILTER_OPTIONS = useMemo(() => buildFilterOptions(findingRecords), [findingRecords]);
+
+  useEffect(() => {
+    let active = true;
+    loadFindings()
+      .then((records) => {
+        if (!active) return;
+        setFindingRecords(records);
+        setLoadState("ready");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : "Findings could not be loaded.");
+        setLoadState("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function persist(id: string, changes: Parameters<typeof updateFinding>[1]) {
+    updateFinding(id, changes)
+      .then(() => setSaveError(null))
+      .catch((error: unknown) =>
+        setSaveError(error instanceof Error ? error.message : "The change could not be saved."),
+      );
+  }
+
+  function persistDebounced(id: string, changes: Parameters<typeof updateFinding>[1]) {
+    const key = `${id}:${Object.keys(changes).join(",")}`;
+    const existing = noteTimers.current.get(key);
+    if (existing) window.clearTimeout(existing);
+    noteTimers.current.set(key, window.setTimeout(() => persist(id, changes), 600));
+  }
+  const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<Record<FindingFilterKey, string>>({
+    severity: "all",
+    classification: "all",
+    data_type: "all",
+    status: "all",
+    source: "all",
+    detector: "all",
+  });
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sort, setSort] = useState<FindingSort>(null);
+  const [cursorHistory, setCursorHistory] = useState<(FindingCursor | null)[]>([null]);
+  const [selectedFindingIds, setSelectedFindingIds] = useState<Set<string>>(() => new Set());
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const selectedFinding = findingRecords.find((finding) => finding.id === selectedFindingId);
+  const filteredFindings = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return findingRecords.filter((finding) =>
+      (filters.severity === "all" || finding.severity === filters.severity) &&
+      (filters.classification === "all" || finding.classification === filters.classification) &&
+      (filters.data_type === "all" || finding.data_type === filters.data_type) &&
+      (filters.status === "all" || finding.status === filters.status) &&
+      (filters.source === "all" || finding.source === filters.source) &&
+      (filters.detector === "all" || finding.detector === filters.detector) &&
+      (!dateFrom || finding.created_at.slice(0, 10) >= dateFrom) &&
+      (!dateTo || finding.created_at.slice(0, 10) <= dateTo) &&
+      (!query ||
+        [
+          finding.id,
+          finding.classification,
+          finding.data_type,
+          finding.status,
+          finding.source,
+          finding.detector,
+        ].some((value) => value.toLowerCase().includes(query))),
+    );
+  }, [dateFrom, dateTo, filters, findingRecords, search]);
+  const findings = useMemo(() => {
+    if (!sort) return filteredFindings;
+
+    const direction = sort.direction === "asc" ? 1 : -1;
+    return [...filteredFindings].sort((left, right) => {
+      if (sort.key === "severity") {
+        const leftSeverity = SEVERITY_ORDER[left.severity] ?? Number.MAX_SAFE_INTEGER;
+        const rightSeverity = SEVERITY_ORDER[right.severity] ?? Number.MAX_SAFE_INTEGER;
+        return (leftSeverity - rightSeverity) * direction;
+      }
+
+      if (sort.key === "confidence") {
+        const leftConfidence = left.confidence;
+        const rightConfidence = right.confidence;
+        const leftMissing = typeof leftConfidence !== "number" || !Number.isFinite(leftConfidence);
+        const rightMissing = typeof rightConfidence !== "number" || !Number.isFinite(rightConfidence);
+        if (leftMissing) return rightMissing ? 0 : 1;
+        if (rightMissing) return -1;
+        return (leftConfidence - rightConfidence) * direction;
+      }
+
+      const leftDate = typeof left.created_at === "string" ? Date.parse(left.created_at) : Number.NaN;
+      const rightDate = typeof right.created_at === "string" ? Date.parse(right.created_at) : Number.NaN;
+      if (Number.isNaN(leftDate)) return Number.isNaN(rightDate) ? 0 : 1;
+      if (Number.isNaN(rightDate)) return -1;
+      return (leftDate - rightDate) * direction;
+    });
+  }, [filteredFindings, sort]);
+
+  const cursor = cursorHistory[cursorHistory.length - 1];
+  const cursorIndex = cursor
+    ? findings.findIndex(
+        (finding) => finding.created_at === cursor.created_at && finding.id === cursor.id,
+      )
+    : -1;
+  const startIndex = cursorIndex < 0 ? 0 : cursorIndex + 1;
+  const pageFindings = findings.slice(startIndex, startIndex + PAGE_SIZE);
+  const selectedVisibleIds = pageFindings
+    .filter((finding) => selectedFindingIds.has(finding.id))
+    .map((finding) => finding.id);
+  const allVisibleSelected =
+    pageFindings.length > 0 && selectedVisibleIds.length === pageFindings.length;
+  const someVisibleSelected = selectedVisibleIds.length > 0 && !allVisibleSelected;
+  const hasPrevious = cursorHistory.length > 1;
+  const hasNext = startIndex + pageFindings.length < findings.length;
+
+  function resetCursor() {
+    setCursorHistory([null]);
+  }
+
+  function loadNext() {
+    const lastFinding = pageFindings[pageFindings.length - 1];
+    if (!lastFinding || !hasNext) return;
+    setCursorHistory((history) => [
+      ...history,
+      { created_at: lastFinding.created_at, id: lastFinding.id },
+    ]);
+  }
+
+  function loadPrevious() {
+    if (hasPrevious) setCursorHistory((history) => history.slice(0, -1));
+  }
+
+  function toggleFindingSelection(id: string, checked: boolean) {
+    setSelectedFindingIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function togglePageSelection(checked: boolean) {
+    setSelectedFindingIds((current) => {
+      const next = new Set(current);
+      for (const finding of pageFindings) {
+        if (checked) next.add(finding.id);
+        else next.delete(finding.id);
+      }
+      return next;
+    });
+  }
+
+  function applyBulkStatus(status: Exclude<FindingStatus, "open">) {
+    const ids = new Set(selectedVisibleIds);
+    if (ids.size === 0) return;
+
+    const label = status.replace(/_/g, " ");
+    if (!window.confirm(`Set ${ids.size} selected visible finding(s) to "${label}"?`)) return;
+
+    setFindingRecords((records) =>
+      records.map((finding) => (ids.has(finding.id) ? { ...finding, status } : finding)),
+    );
+    ids.forEach((id) => persist(id, { status }));
+    setSelectedFindingIds(new Set());
+  }
+
+  function toggleSort(key: FindingSortKey) {
+    resetCursor();
+    setSort((current) => ({
+      key,
+      direction: current?.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
+  function renderSortHeader(label: string, key: FindingSortKey) {
+    const direction = sort?.key === key ? sort.direction : null;
+    const SortIcon = direction === "asc" ? ArrowUp : ArrowDown;
+
+    return (
+      <th
+        key={label}
+        aria-sort={direction === "asc" ? "ascending" : direction === "desc" ? "descending" : "none"}
+        className="px-4 py-3 font-semibold text-muted-foreground first:pl-5"
+      >
+        <button
+          type="button"
+          onClick={() => toggleSort(key)}
+          aria-label={`Sort by ${label}${
+            direction ? `, ${direction === "asc" ? "ascending" : "descending"}` : ""
+          }`}
+          className="inline-flex items-center gap-1.5 text-left transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {label}
+          {direction && <SortIcon className="size-3" aria-hidden="true" />}
+        </button>
+      </th>
+    );
+  }
+
+  function renderHeader(label: string) {
+    return (
+      <th key={label} className="px-4 py-3 font-semibold text-muted-foreground first:pl-5">
+        {label}
+      </th>
+    );
+  }
+  const hasActiveFilters =
+    search !== "" ||
+    Object.values(filters).some((value) => value !== "all") ||
+    dateFrom !== "" ||
+    dateTo !== "";
+
+  function clearFilters() {
+    resetCursor();
+    setSearch("");
+    setFilters({
+      severity: "all",
+      classification: "all",
+      data_type: "all",
+      status: "all",
+      source: "all",
+      detector: "all",
+    });
+    setDateFrom("");
+    setDateTo("");
+  }
+
+  return (
+    <AppShell>
+      <Sheet
+        open={Boolean(selectedFinding)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedFindingId(null);
+        }}
+      >
+      <main className="space-y-6 px-6 py-6" style={{ minHeight: "calc(100vh - 56px)" }}>
+        <header>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--foreground)" }}>
+            Findings
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
+            Investigate and manage detected sensitive data.
+          </p>
+        </header>
+        {loadState === "error" && (
+          <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+            {loadError}
+          </div>
+        )}
+        {saveError && (
+          <div role="alert" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
+            {saveError}
+          </div>
+        )}
+
+        <section
+          className="rounded-2xl border p-4 backdrop-blur-xl sm:p-5"
+          aria-label="Finding search and filters"
+          style={{
+            background: "var(--card)",
+            borderColor: "var(--border)",
+            boxShadow: "0 4px 12px oklch(0 0 0 / 0.045), 0 10px 28px oklch(0 0 0 / 0.025)",
+          }}
+        >
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2"
+                style={{ color: "var(--muted-foreground)" }}
+                aria-hidden="true"
+              />
+              <Input
+                value={search}
+                onChange={(event) => {
+                  resetCursor();
+                  setSearch(event.target.value);
+                }}
+                placeholder="Search findings..."
+                aria-label="Search findings"
+                className="h-10 border-border bg-background/60 pl-9"
+              />
+            </div>
+            <span className="sr-only">
+              <SlidersHorizontal aria-hidden="true" />
+              Filters
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+            {FILTER_FIELDS.map(({ key, label }) => (
+              <label key={key} className="min-w-0">
+                <span className="sr-only">{label}</span>
+                <select
+                  aria-label={label}
+                  value={filters[key]}
+                  onChange={(event) => {
+                    resetCursor();
+                    setFilters((current) => ({ ...current, [key]: event.target.value }));
+                  }}
+                  className="h-9 w-full rounded-md border border-input bg-background/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="all">All {label.toLowerCase()}</option>
+                  {FILTER_OPTIONS[key].map((value) => (
+                    <option key={value} value={value}>
+                      {value.replace(/[_-]+/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+            <label className="min-w-0">
+              <span className="sr-only">From date</span>
+              <input
+                aria-label="From date"
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(event) => {
+                  resetCursor();
+                  setDateFrom(event.target.value);
+                }}
+                className="h-9 w-full rounded-md border border-input bg-background/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </label>
+            <label className="min-w-0">
+              <span className="sr-only">To date</span>
+              <input
+                aria-label="To date"
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(event) => {
+                  resetCursor();
+                  setDateTo(event.target.value);
+                }}
+                className="h-9 w-full rounded-md border border-input bg-background/60 px-3 text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Showing {findings.length} of {findingRecords.length} findings.
+            </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+              className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Clear filters
+            </button>
+          </div>
+        </section>
+
+        <section
+          className="overflow-hidden rounded-2xl border backdrop-blur-xl"
+          aria-label="Findings"
+          style={{
+            background: "var(--card)",
+            borderColor: "var(--border)",
+            boxShadow: "0 4px 12px oklch(0 0 0 / 0.045), 0 10px 28px oklch(0 0 0 / 0.025)",
+          }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b px-5 py-4" style={{ borderColor: "var(--border)" }}>
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                Finding queue
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Showing {pageFindings.length} of {findings.length} matching findings
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  downloadFindingsCsv(
+                    findings,
+                    new URLSearchParams(window.location.search).get("format") === "secureflow"
+                      ? "secureflow"
+                      : "csv",
+                  )
+                }
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background/60 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                Export CSV
+              </button>
+              <label className="mr-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  aria-label="Select all findings on this page"
+                  aria-checked={someVisibleSelected ? "mixed" : allVisibleSelected}
+                  checked={allVisibleSelected}
+                  ref={(element) => {
+                    if (element) element.indeterminate = someVisibleSelected;
+                  }}
+                  onChange={(event) => togglePageSelection(event.target.checked)}
+                  className="size-4 accent-primary"
+                />
+                Select page
+              </label>
+              <span className="mr-1 text-xs text-muted-foreground" aria-live="polite">
+                {selectedVisibleIds.length} selected
+              </span>
+              {(
+                [
+                  ["triaged", "Triaged"],
+                  ["fixed", "Fixed"],
+                  ["accepted", "Accepted"],
+                  ["false_positive", "False positive"],
+                ] as const
+              ).map(([status, label]) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => applyBulkStatus(status)}
+                  disabled={selectedVisibleIds.length === 0}
+                  className="rounded-md border border-border/70 bg-background/60 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                  <th className="px-3 py-3" aria-label="Selection" />
+                  {renderSortHeader("Severity", "severity")}
+                  {["Classification", "Finding", "Status", "Source / detector"].map(renderHeader)}
+                  {renderSortHeader("Confidence", "confidence")}
+                  {renderSortHeader("Detected", "created_at")}
+                  <th className="px-4 py-3 pr-5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
+                {pageFindings.map((finding) => (
+                  <tr
+                    key={finding.id}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`View finding ${finding.id}`}
+                    onClick={() => setSelectedFindingId(finding.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedFindingId(finding.id);
+                      }
+                    }}
+                    className="cursor-pointer transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  >
+                    <td className="px-3 py-4">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select finding ${finding.id}`}
+                        checked={selectedFindingIds.has(finding.id)}
+                        onChange={(event) =>
+                          toggleFindingSelection(finding.id, event.target.checked)
+                        }
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        className="size-4 accent-primary"
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 pl-5">
+                      <SeverityBadge severity={finding.severity} />
+                    </td>
+                    <td className="px-4 py-4"><ClassificationChip classification={finding.classification} /></td>
+                    <td className="max-w-[260px] px-4 py-4">
+                      <p className="font-medium text-foreground">{finding.data_type.replace(/[_-]+/g, " ")}</p>
+                      <MaskedValue value={null} fallback="Evidence unavailable" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-medium ${STATUS_STYLES[finding.status]}`}>
+                        {finding.status.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="font-medium text-foreground">{finding.source}</p>
+                      <p className="mt-0.5 text-muted-foreground">{finding.detector}</p>
+                    </td>
+                    <td className="px-4 py-4"><ConfidenceBar confidence={finding.confidence} /></td>
+                    <td className="whitespace-nowrap px-4 py-4 text-muted-foreground">
+                      {new Date(finding.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-4 pr-5" />
+                  </tr>
+                ))}
+                {pageFindings.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-5 py-14 text-center text-sm text-muted-foreground">
+                      {loadState === "loading" ? "Loading findings…" : findingRecords.length === 0 ? "No findings yet. They appear here as scans detect sensitive data." : "No findings match your search."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="space-y-3 p-4 lg:hidden">
+            {pageFindings.map((finding) => (
+              <article
+                key={finding.id}
+                tabIndex={0}
+                role="button"
+                aria-label={`View finding ${finding.id}`}
+                onClick={() => setSelectedFindingId(finding.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setSelectedFindingId(finding.id);
+                  }
+                }}
+                className="cursor-pointer rounded-xl border border-border/70 bg-background/40 p-4 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <label
+                  className="mb-3 inline-flex items-center gap-2 text-xs text-muted-foreground"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`Select finding ${finding.id}`}
+                    checked={selectedFindingIds.has(finding.id)}
+                    onChange={(event) =>
+                      toggleFindingSelection(finding.id, event.target.checked)
+                    }
+                    onKeyDown={(event) => event.stopPropagation()}
+                    className="size-4 accent-primary"
+                  />
+                  Select finding
+                </label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <SeverityBadge severity={finding.severity} />
+                  <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-medium ${STATUS_STYLES[finding.status]}`}>
+                    {finding.status.replace(/_/g, " ")}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <ClassificationChip classification={finding.classification} />
+                  <span className="text-xs capitalize text-muted-foreground">
+                    {finding.data_type.replace(/[_-]+/g, " ")}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium">{finding.source} · {finding.detector}</p>
+                    <div className="mt-1">
+                      <MaskedValue value={null} fallback="Evidence unavailable" />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <ConfidenceBar confidence={finding.confidence} />
+                  <time className="text-[11px] text-muted-foreground" dateTime={finding.created_at}>
+                    {new Date(finding.created_at).toLocaleString()}
+                  </time>
+                </div>
+              </article>
+            ))}
+            {pageFindings.length === 0 && (
+              <p className="py-12 text-center text-sm text-muted-foreground">
+                {loadState === "loading" ? "Loading findings…" : findingRecords.length === 0 ? "No findings yet. They appear here as scans detect sensitive data." : "No findings match your search."}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: "var(--border)" }}>
+            <button
+              type="button"
+              onClick={loadPrevious}
+              disabled={!hasPrevious}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={loadNext}
+              disabled={!hasNext}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </section>
+      </main>
+      {selectedFinding && (
+        <SheetContent
+          side="right"
+          aria-label={`Finding details: ${selectedFinding.id}`}
+          className="w-full overflow-y-auto border-l border-border bg-popover p-0 shadow-2xl backdrop-blur-xl sm:max-w-lg"
+        >
+          <div className="border-b border-border/70 px-6 py-5">
+            <SheetTitle className="pr-10 text-lg">Finding details</SheetTitle>
+            <SheetDescription className="mt-1 break-all font-mono text-xs">
+              {selectedFinding.id}
+            </SheetDescription>
+          </div>
+          <div className="space-y-6 px-6 py-5">
+            <section aria-label="Finding attributes">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-5">
+                {[
+                  ["Severity", selectedFinding.severity],
+                  ["Classification", selectedFinding.classification],
+                  ["Data type", selectedFinding.data_type.replace(/[_-]+/g, " ")],
+                  ["Status", selectedFinding.status.replace(/_/g, " ")],
+                  ["Source", selectedFinding.source],
+                  ["Detector", selectedFinding.detector],
+                  ["Confidence", `${Math.round(selectedFinding.confidence * 100)}%`],
+                  ["Created / detected", new Date(selectedFinding.created_at).toLocaleString()],
+                  [
+                    "Location",
+                    `/${selectedFinding.source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}/item-${selectedFinding.id.slice(-2)}`,
+                  ],
+                  [
+                    "Policy",
+                    `${selectedFinding.classification.replace(/[^a-z0-9]+/gi, "-").toUpperCase()}-POLICY`,
+                  ],
+                  [
+                    "Decision",
+                    selectedFinding.status === "fixed"
+                      ? "Remediated"
+                      : selectedFinding.status === "accepted"
+                        ? "Risk accepted"
+                        : selectedFinding.status === "false_positive"
+                          ? "Marked false positive"
+                          : "Review required",
+                  ],
+                  ["Fingerprint", `fp_${selectedFinding.id.slice(-4)}_a91c`],
+                ].map(([label, value]) => (
+                  <div key={label} className="min-w-0">
+                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {label}
+                    </dt>
+                    <dd className="mt-1 break-words text-sm font-medium capitalize text-foreground">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+            <section className="space-y-4 rounded-xl border border-border/70 bg-background/60 p-4">
+              <label className="block">
+                <span className="text-xs font-semibold text-foreground">Change status</span>
+                <select
+                  aria-label="Change finding status"
+                  value={selectedFinding.status}
+                  onChange={(event) => {
+                    const status = STATUS_OPTIONS.find((option) => option === event.target.value);
+                    if (!status) return;
+                    persist(selectedFinding.id, { status });
+                    setFindingRecords((records) =>
+                      records.map((finding) =>
+                        finding.id === selectedFinding.id ? { ...finding, status } : finding,
+                      ),
+                    );
+                  }}
+                  className="mt-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {status.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-foreground">Owner</span>
+                <Input
+                  value={selectedFinding.owner}
+                  onChange={(event) => {
+                    const owner = event.target.value;
+                    persistDebounced(selectedFinding.id, { owner });
+                    setFindingRecords((records) =>
+                      records.map((finding) =>
+                        finding.id === selectedFinding.id ? { ...finding, owner } : finding,
+                      ),
+                    );
+                  }}
+                  placeholder="Assign an owner"
+                  aria-label="Finding owner"
+                  className="mt-2 border-border bg-background/70"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold text-foreground">Notes</span>
+                <textarea
+                  value={selectedFinding.notes}
+                  onChange={(event) => {
+                    const notes = event.target.value;
+                    persistDebounced(selectedFinding.id, { notes });
+                    setFindingRecords((records) =>
+                      records.map((finding) =>
+                        finding.id === selectedFinding.id ? { ...finding, notes } : finding,
+                      ),
+                    );
+                  }}
+                  placeholder="Add investigation notes"
+                  aria-label="Finding notes"
+                  rows={4}
+                  className="mt-2 w-full resize-y rounded-md border border-input bg-background/70 px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </label>
+            </section>
+            <section className="rounded-xl border border-border/70 bg-background/60 p-4">
+              <h3 className="text-xs font-semibold text-muted-foreground">Masked evidence</h3>
+              <div className="mt-2">
+                <MaskedValue
+                  value={selectedFinding.masked_evidence}
+                  fallback="Evidence unavailable — sensitive value hidden"
+                />
+              </div>
+            </section>
+          </div>
+        </SheetContent>
+      )}
+      </Sheet>
+    </AppShell>
+  );
+}

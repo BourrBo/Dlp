@@ -1,48 +1,68 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>DLP Guard — Settings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DLP Guard - Settings</title>
   <style>
-    body { font-family: system-ui, sans-serif; width: 360px; padding: 16px; color: #1a1a1a; }
-    h1 { font-size: 15px; margin: 0 0 12px; }
-    label { display: block; font-size: 12px; color: #555; margin: 12px 0 4px; }
-    input[type="text"] { width: 100%; padding: 6px 8px; font-size: 13px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-    .row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
-    button { padding: 6px 14px; font-size: 13px; border: none; border-radius: 4px; cursor: pointer; }
-    #save { background: #2563eb; color: #fff; }
-    #test { background: #eee; }
-    #status { font-size: 12px; margin-top: 10px; min-height: 16px; }
+    body { font: 14px system-ui, sans-serif; max-width: 620px; margin: 32px auto; padding: 0 20px; color: #17202a; }
+    h1 { font-size: 22px; } label { display: block; margin: 18px 0 6px; font-weight: 600; }
+    input[type="url"], input[type="text"], input[type="email"], input[type="password"], textarea { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #aab4bf; border-radius: 5px; }
+    textarea { min-height: 100px; } .hint { color: #52606d; font-size: 12px; margin-top: 4px; }
+    .row { display: flex; gap: 12px; align-items: center; margin-top: 18px; } button { padding: 8px 14px; }
+    #status { min-height: 22px; margin-top: 16px; } .managed { background: #eff6ff; padding: 12px; border-radius: 6px; }
+    fieldset { border: 1px solid #d8dee5; border-radius: 8px; margin: 18px 0; padding: 12px 16px; }
   </style>
 </head>
 <body>
-  <h1>DLP Guard — Settings</h1>
+  <h1>DLP Guard settings</h1>
+  <p>Organization settings can be centrally managed by your administrator. The extension sends scans to the configured DLP API and does not send organization or user IDs from the browser.</p>
+  <div id="managedNotice" class="managed" hidden>Some settings are controlled by your administrator and cannot be changed here.</div>
 
-  <label for="backendUrl">Backend URL</label>
-  <input type="text" id="backendUrl" placeholder="http://localhost:8000" />
+  <label for="backendUrl">DLP backend URL</label>
+  <input id="backendUrl" type="url" placeholder="https://dlp-api.example.com" autocomplete="url" />
+  <div class="hint">Use HTTPS for hosted deployments. Local development can use http://localhost:8000.</div>
 
-  <label for="orgId">Organization ID</label>
-  <input type="text" id="orgId" placeholder="UUID from your dlp_organizations row" />
+  <label for="apiKey">DLP API key</label>
+  <input id="apiKey" type="password" placeholder="Enter a scoped API key" autocomplete="new-password" />
+  <div class="hint" id="keyHint">A key provided by your administrator is preferred. A local key is stored in this browser profile and is not synced.</div>
 
-  <label for="userId">User ID</label>
-  <input type="text" id="userId" placeholder="Your Supabase auth user id" />
+  <fieldset id="personalSignIn">
+    <legend>Personal sign-in (used only when no API key is set)</legend>
+    <div id="signedInAs" class="hint" role="status"></div>
+    <label for="supabaseUrl">Supabase project URL</label>
+    <input id="supabaseUrl" type="url" placeholder="https://your-project.supabase.co" autocomplete="off" />
+    <label for="supabasePublishableKey">Supabase publishable key</label>
+    <input id="supabasePublishableKey" type="text" autocomplete="off" spellcheck="false" />
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" />
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" />
+    <div class="row">
+      <button id="signIn" type="button">Sign in</button>
+      <button id="signOut" type="button">Sign out</button>
+    </div>
+    <div class="hint">Your organization is taken from your account. The password is sent only to Supabase and is never stored.</div>
+  </fieldset>
 
-  <div class="row" style="margin-top: 16px;">
-    <input type="checkbox" id="failClosed" style="width: auto;" />
-    <label for="failClosed" style="margin: 0; font-size: 12px; color: #1a1a1a;">
-      Block pastes/uploads when the backend is unavailable
-    </label>
-  </div>
-  <div style="font-size: 11px; color: #888; margin-top: 4px;">
-    Off by default (fail open). Enable this for stricter enforcement requirements.
-  </div>
+  <label for="aiSites">Monitored AI site domains</label>
+  <textarea id="aiSites" spellcheck="false" placeholder="chatgpt.com&#10;gemini.google.com&#10;claude.ai"></textarea>
+  <div class="hint">One domain per line. Content scripts are limited to the sites declared in the extension package.</div>
+
+  <fieldset>
+    <legend>Protection</legend>
+    <label><input id="enabled" type="checkbox" /> Enable protection</label>
+    <label><input id="failClosed" type="checkbox" /> Block when the DLP service is unavailable</label>
+    <div class="hint">An administrator-managed fail-open/fail-closed setting takes precedence.</div>
+  </fieldset>
 
   <div class="row">
-    <button id="save">Save</button>
-    <button id="test">Test connection</button>
+    <button id="save">Save local settings</button>
+    <button id="test">Test backend connection</button>
+    <button id="clearKey">Clear local API key</button>
   </div>
-  <div id="status"></div>
-
+  <div id="status" role="status" aria-live="polite"></div>
+  <script src="extension-core.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

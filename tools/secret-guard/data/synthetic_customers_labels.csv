@@ -1,0 +1,11 @@
+customer_id,expected_rule
+C001,india.aadhaar
+C002,india.pan
+C003,india.gstin
+C004,india.ifsc
+C005,india.bank_account
+C006,india.upi
+C007,india.mobile
+C008,
+C009,
+C010,

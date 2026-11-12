@@ -1,17 +1,35 @@
 {
   "manifest_version": 3,
   "name": "DLP Guard",
-  "version": "0.1.0",
-  "description": "Scans pastes and file uploads for sensitive data before they leave the page, using your DLP backend's policy decisions.",
-  "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["<all_urls>"],
+  "version": "0.2.0",
+  "description": "Scans content sent to configured AI destinations for sensitive data.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://gemini.google.com/*",
+    "https://claude.ai/*",
+    "https://copilot.microsoft.com/*",
+    "https://perplexity.ai/*",
+    "https://www.perplexity.ai/*",
+    "https://*.supabase.co/*",
+    "http://localhost:8000/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://claude.ai/*",
+        "https://copilot.microsoft.com/*",
+        "https://perplexity.ai/*",
+        "https://www.perplexity.ai/*"
+      ],
+      "js": ["extension-core.js", "content.js"],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true,
@@ -22,5 +40,8 @@
     "default_popup": "popup.html",
     "default_title": "DLP Guard"
   },
-  "options_page": "options.html"
+  "options_page": "options.html",
+  "storage": {
+    "managed_schema": "managed-schema.json"
+  }
 }

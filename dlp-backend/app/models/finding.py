@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from uuid import UUID, uuid4
@@ -46,15 +46,24 @@ class Finding(BaseModel):
     sensitivity_level: str = "internal"  # public | internal | confidential | restricted
     matched_rule_id: Optional[UUID] = None
     label: Optional[str] = None
+    # Optional character offsets in the analyzed text. Ingestion and developer
+    # tooling use these to report precise source locations; existing detector
+    # integrations may omit them until they can provide stable offsets.
+    start: Optional[int] = Field(default=None, ge=0)
+    end: Optional[int] = Field(default=None, ge=0)
 
 
 class ScanRequest(BaseModel):
-    org_id: UUID
-    user_id: UUID
+    # Optional on the wire: authenticated handlers fill it from the caller's organization.
+    org_id: Optional[UUID] = None
+    # Deprecated caller field: authenticated scan handlers replace it with the
+    # verified principal ID before policy or persistence work begins.
+    user_id: Optional[UUID] = None
     channel: Channel
     destination: str  # domain, email address, or share target
     content: str  # raw text extracted from the file/paste/attachment being scanned
     filename: Optional[str] = None
+    event_id: Optional[UUID] = None
 
 
 class ScanResult(BaseModel):
@@ -76,4 +85,4 @@ class DlpEvent(BaseModel):
     destination: str
     decision: Decision
     snippet: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
